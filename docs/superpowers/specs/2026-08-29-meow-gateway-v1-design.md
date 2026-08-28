@@ -278,7 +278,7 @@ Sequenced according to `docs/DEVELOPMENT_PLAN.md` and `docs/TASK_INDEX.md`; each
 |---|---|---|
 | 0 | Bootstrap | T001 |
 | 1 | Persistence & credentials | T101, T103 |
-| 2 | Provider abstraction | T201, T203, T204 |
+| 2 | Provider abstraction | T201, T202, T203, T204 |
 | 3 | Local gateway | T301, T304, T305 |
 | 4 | Virtual models | T401 |
 | 5 | Usage & cost | T501 |
