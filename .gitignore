@@ -10,3 +10,6 @@ release/
 *.db-wal
 .DS_Store
 .worktrees/
+.pnpm-store/
+*.tsbuildinfo
+corepack/

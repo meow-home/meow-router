@@ -1,0 +1,16 @@
+{
+  "name": "meow-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "pnpm --filter @meow-gateway/desktop dev",
+    "build": "pnpm --filter @meow-gateway/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "package": "pnpm --filter @meow-gateway/desktop package"
+  }
+}
