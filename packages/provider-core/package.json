@@ -1,0 +1,20 @@
+{
+  "name": "@meow-gateway/provider-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/types.ts",
+  "types": "./src/types.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0",
+    "eslint": "^9.5.0",
+    "typescript-eslint": "^8.0.0",
+    "@eslint/js": "^9.5.0"
+  }
+}
