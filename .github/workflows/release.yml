@@ -147,9 +147,9 @@ jobs:
       # Use the gh CLI (preinstalled on GitHub runners) instead of
       # softprops/action-gh-release@v2: that action is unreliable when re-running
       # against a release that already exists (it calls the delete-asset API and
-      # 404s/NPEs). "gh release create" is idempotent and handles asset upload
-      # cleanly. If a previous partial run left a release for this tag, delete it
-      # first so we start from a clean slate.
+      # 404s/NPEs). This step is idempotent: on a fresh tag it creates the
+      # release, and on a re-run it uploads/overwrites the assets onto the
+      # existing release. We never delete the release or its tag.
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -157,16 +157,18 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; deleting to start fresh."
-            gh release delete "$TAG" --yes
-          fi
           mapfile -t files < <(find release-artifacts -type f | sort)
           args=()
           for f in "${files[@]}"; do
             args+=("$f")
           done
-          gh release create "$TAG" \
-            --title "Meow Gateway v${version}" \
-            --generate-notes \
-            "${args[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading/overwriting assets."
+            gh release upload "$TAG" "${args[@]}" --clobber
+          else
+            echo "Release $TAG does not exist; creating it."
+            gh release create "$TAG" \
+              --title "Meow Gateway v${version}" \
+              --generate-notes \
+              "${args[@]}"
+          fi
