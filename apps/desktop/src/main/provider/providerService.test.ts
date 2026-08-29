@@ -101,9 +101,13 @@ describe('ProviderService', () => {
     ]) }
     registry.get.mockReturnValue(adapter)
     credentials.getCredential.mockResolvedValue('secret')
+    providerRepo.findById.mockReturnValue(providerRow)
+    // A pre-existing model 'a' that the user has explicitly disabled; it IS in the API response,
+    // so discoverModels must upsert it while preserving the disabled status (NOT forcing true).
+    modelRepo.findByProviderModel.mockReturnValue({ id: 'm1', provider_id: 'p1', provider_model_id: 'a', display_name: 'A', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: false, discovered_at: '', stale: false })
     // pre-existing model 'b' is present locally but won't be in the API response
     modelRepo.listByProvider.mockReturnValue([
-      { id: 'm1', provider_id: 'p1', provider_model_id: 'a', display_name: 'A', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false },
+      { id: 'm1', provider_id: 'p1', provider_model_id: 'a', display_name: 'A', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: false, discovered_at: '', stale: false },
       { id: 'm2', provider_id: 'p1', provider_model_id: 'b', display_name: 'B', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: false, discovered_at: '', stale: false }
     ])
     modelRepo.upsertByProviderModel.mockImplementation((input) => ({ ...(input as object), id: 'm1', enabled: true, discovered_at: '', stale: false }) as never)
@@ -112,8 +116,8 @@ describe('ProviderService', () => {
     await service.discoverModels('p1')
 
     expect(modelRepo.update).toHaveBeenCalledWith('m2', { stale: true })
-    // the model present in API response was upserted; its enabled was NOT forced true
-    expect(modelRepo.upsertByProviderModel).toHaveBeenCalledWith(expect.objectContaining({ provider_model_id: 'a', enabled: true }))
+    // The model present in the API response was upserted; its user choice (disabled) was preserved.
+    expect(modelRepo.upsertByProviderModel).toHaveBeenCalledWith(expect.objectContaining({ provider_model_id: 'a', enabled: false }))
   })
 
   it('rejects an unsafe SSRF base URL on create', () => {
