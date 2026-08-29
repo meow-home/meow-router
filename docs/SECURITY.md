@@ -32,6 +32,21 @@ Never:
 - include keys in error messages;
 - send keys through renderer IPC payloads.
 
+### Local gateway key
+
+The gateway's own API key is generated on first launch and stored through the
+same safeStorage-backed credential service as provider keys, under the ref
+`gateway:local-key`. It is never written to SQLite.
+
+The renderer never receives the raw key. It gets a masked form
+(`mgw_...1f4a`) computed in the main process; Copy writes the real key to the
+clipboard from the main process. The mask's bullet run is a fixed width and does
+not reveal the key's length.
+
+If `auth_enabled` is on and the key cannot be read, the gateway fails closed --
+every request is rejected with 401. It never falls back to serving
+unauthenticated traffic.
+
 ### Local server
 
 Default:

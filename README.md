@@ -17,6 +17,10 @@ Meow Gateway is a cross-platform Electron desktop application that lets users:
 
 The primary consumer is a coding agent such as Meow Coding, OpenCode, Claude Code, Aider, Cline/Roo Code or another OpenAI-compatible client.
 
+The gateway requires an API key by default. Open Gateway -> Gateway API key and
+press Copy, then paste it into your coding agent as the API key for the
+`http://127.0.0.1:8317/v1` endpoint.
+
 ## Providers
 
 OpenAI-compatible providers can be added by choosing a provider type and typing

@@ -6,15 +6,32 @@ Base URL:
 
 ## Authentication
 
-For localhost-only mode, API-key authentication is optional.
-
-If enabled:
+The gateway requires an API key by default. Send it as a bearer token:
 
 ```http
 Authorization: Bearer <local-gateway-key>
 ```
 
-The local gateway key is independent from cloud provider API keys.
+The local gateway key is independent from cloud provider API keys. Find it in
+the desktop app under Gateway -> Gateway API key; Copy puts the full key on your
+clipboard.
+
+`GET /health` never requires the key, so a liveness probe works unauthenticated.
+
+A missing, malformed or wrong key returns 401:
+
+```json
+{
+  "error": {
+    "message": "Missing or invalid gateway API key.",
+    "type": "invalid_request_error",
+    "code": "GATEWAY_AUTH_REQUIRED"
+  }
+}
+```
+
+Authentication can be turned off in Gateway -> Require gateway API key. With it
+off the gateway serves any loopback client.
 
 ## GET /health
 

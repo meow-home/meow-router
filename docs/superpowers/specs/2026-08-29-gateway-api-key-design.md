@@ -89,9 +89,11 @@ Rules:
 - Comparison uses `crypto.timingSafeEqual` on equal-length buffers, not `===`,
   so a wrong key cannot be narrowed down by timing.
 
-The 401 body goes through the existing `toGatewayErrorBody` taxonomy. It never
-echoes the expected key, and the `Authorization` header is never logged
-(`docs/SECURITY.md:71`).
+The 401 body reuses the `GatewayErrorBody` envelope but carries the code
+`GATEWAY_AUTH_REQUIRED`, not `toGatewayErrorBody`'s `PROVIDER_AUTH_FAILED` —
+that code means an upstream provider rejected our credentials, a different
+problem with a different fix. It never echoes the expected key, and the
+`Authorization` header is never logged (`docs/SECURITY.md:71`).
 
 ### 5.2 Wiring into the server
 
