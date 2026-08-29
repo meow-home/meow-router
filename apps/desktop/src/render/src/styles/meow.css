@@ -208,7 +208,7 @@ code, .mono { font-family: var(--font-mono); }
 
 /* ---------- buttons ---------- */
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   background: var(--bg-input); color: var(--text-strong);
   border: 1px solid var(--hairline); border-radius: var(--radius);
   padding: 6px 12px;
@@ -393,7 +393,7 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
 }
 .dialog-close:hover { background: var(--bg-hover); color: var(--text-strong); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; }
-.dialog-actions .btn { min-width: 80px; text-align: center; }
+.dialog-actions .btn { min-width: 80px; }
 
 /* ---------- spinner ---------- */
 .spinner-wrap { display: inline-flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: var(--fs-1); }
