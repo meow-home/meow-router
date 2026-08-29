@@ -44,14 +44,13 @@
 
 Add new types to `apps/desktop/src/shared/ipc.ts`. The existing renderer test setup mocks `window.meowGateway`; this step only changes the type surface, so no runtime test runs yet. Verify it compiles by running the desktop typecheck; it should currently fail because `WindowApi` references types we will add next, and the preload doesn't yet implement them — that's expected.
 
-Add these imports/type exports at the top of `ipc.ts`:
+Add this import at the top of `ipc.ts`:
 
 ```ts
-import type { VirtualModelRow, ModelRow, GatewayConfigRow, RequestUsageRow } from '../main/database/types'
-import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
+import type { VirtualModelRow, ProviderRow } from '../main/database/types'
 ```
 
-Note: importing `ModelInfo`/`CredentialCheckResult` from `@meow-gateway/provider-core` is acceptable in `shared/ipc.ts` because these are pure types with no Electron/node deps. Do NOT import runtime values (e.g. `ProviderRegistry`) into the shared layer.
+Note: do NOT add imports that are unused in this task — tsconfig has `noUnusedLocals: true`, and `ModelRow`/`GatewayConfigRow`/`RequestUsageRow`/`ModelInfo`/`CredentialCheckResult` are only used in Task 2 when `WindowApi` is extended. Add only `ProviderRow` now (needed by `ProviderWithCredential`); the remaining types are imported in Task 2.
 
 Add to `IPC_CHANNELS`:
 
@@ -111,12 +110,6 @@ export interface GatewayStatus {
   host: string
   port: number
 }
-```
-
-Add `ProviderRow` import to the type imports (it lives in `../main/database/types`):
-
-```ts
-import type { VirtualModelRow, ModelRow, ProviderRow, GatewayConfigRow, RequestUsageRow } from '../main/database/types'
 ```
 
 - [ ] **Step 2: Run typecheck to verify the shared types compile**
