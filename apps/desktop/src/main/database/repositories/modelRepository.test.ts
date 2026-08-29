@@ -1,5 +1,5 @@
 // Tests for ModelRepository CRUD, upsert and enable/disable (Phase 2 UI support).
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { openDatabase, closeDatabase, type PersistedConnection } from '../connection'
 import { ModelRepository } from './modelRepository'
 
@@ -11,6 +11,8 @@ describe('ModelRepository', () => {
     db = await openDatabase(':memory:')
     repo = new ModelRepository(db)
   })
+
+  afterEach(() => closeDatabase(db))
 
   it('creates and finds a model by provider model id', () => {
     const created = repo.upsertByProviderModel({
