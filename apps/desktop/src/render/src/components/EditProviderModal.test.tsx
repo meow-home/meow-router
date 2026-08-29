@@ -28,6 +28,13 @@ describe('EditProviderModal', () => {
     await waitFor(() => expect(gw.updateProvider).toHaveBeenCalledWith('p1', { display_name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', enabled: false }))
   })
 
+  it('normalizes an empty base_url to null on submit', async () => {
+    const noBaseProvider = { ...provider, base_url: null }
+    render(<EditProviderModal open provider={noBaseProvider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
+    fireEvent.click(screen.getByText('Save Provider'))
+    await waitFor(() => expect(gw.updateProvider).toHaveBeenCalledWith('p1', { display_name: 'DeepSeek', base_url: null, enabled: true }))
+  })
+
   it('calls setProviderCredential when a new key is entered', async () => {
     render(<EditProviderModal open provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-new' } })

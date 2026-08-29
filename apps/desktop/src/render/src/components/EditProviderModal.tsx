@@ -40,7 +40,7 @@ export function EditProviderModal({
     try {
       const updated = await window.meowGateway.updateProvider(provider.id, {
         display_name: displayName,
-        base_url: baseUrl,
+        base_url: baseUrl || null,
         enabled,
       })
       if (keyValue) await window.meowGateway.setProviderCredential(provider.id, keyValue)
