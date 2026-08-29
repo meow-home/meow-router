@@ -1,7 +1,7 @@
 // Narrow typed IPC contract shared between preload, main, and renderer.
 // Only non-sensitive, schema-validated payloads cross this boundary.
 
-import type { VirtualModelRow } from '../main/database/types'
+import type { VirtualModelRow, ProviderRow } from '../main/database/types'
 
 export interface WindowApi {
   ping(): Promise<PingResult>
@@ -14,6 +14,32 @@ export interface WindowApi {
 
 export const IPC_CHANNELS = {
   ping: 'app:ping',
+  provider: {
+    list: 'provider:list',
+    create: 'provider:create',
+    update: 'provider:update',
+    delete: 'provider:delete',
+    setCredential: 'provider:set-credential',
+    testConnection: 'provider:test-connection',
+    discoverModels: 'provider:discover-models',
+    types: 'provider:types'
+  },
+  model: {
+    listByProvider: 'model:list-by-provider',
+    delete: 'model:delete',
+    setEnabled: 'model:set-enabled'
+  },
+  gateway: {
+    getStatus: 'gateway:get-status',
+    start: 'gateway:start',
+    stop: 'gateway:stop',
+    getConfig: 'gateway:get-config',
+    saveConfig: 'gateway:save-config'
+  },
+  usage: {
+    dashboardTotals: 'usage:dashboard-totals',
+    listRecent: 'usage:list-recent'
+  },
   virtualModel: {
     list: 'virtual-model:list',
     get: 'virtual-model:get',
@@ -35,6 +61,28 @@ export interface NewVirtualModelInput {
   routing_policy_id?: string | null
   enabled?: boolean
 }
+
+export interface NewProviderInput {
+  type: string
+  display_name: string
+  base_url?: string | null
+}
+
+export type ProviderWithCredential = ProviderRow & { hasCredential: boolean }
+
+export interface ProviderTypeDescriptor {
+  id: string
+  displayName: string
+  defaultBaseUrl: string
+  authType: string
+}
+
+export interface GatewayStatus {
+  running: boolean
+  host: string
+  port: number
+}
+
 
 export interface IpcResult<T> {
   ok: boolean
