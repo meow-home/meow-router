@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
+import { ViewHeader, Button, Field, EmptyState, Tag, Panel, Select, Input, Checkbox } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -30,6 +31,14 @@ function parseCapabilities(json: string | null): Capabilities {
     return { ...EMPTY_CAPS }
   }
 }
+
+const capabilityLabels: Array<{ key: keyof Capabilities; label: string }> = [
+  { key: 'streaming', label: 'Streaming' },
+  { key: 'tools', label: 'Tools' },
+  { key: 'vision', label: 'Vision' },
+  { key: 'reasoning', label: 'Reasoning' },
+  { key: 'structuredOutput', label: 'Structured' },
+]
 
 interface ModelFormProps {
   providers: ProviderWithCredential[]
@@ -67,60 +76,51 @@ function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: Mo
     await onSave(input)
   }
 
-  const capabilityLabels: Array<{ key: keyof Capabilities; label: string }> = [
-    { key: 'streaming', label: 'Streaming' },
-    { key: 'tools', label: 'Tools' },
-    { key: 'vision', label: 'Vision' },
-    { key: 'reasoning', label: 'Reasoning' },
-    { key: 'structuredOutput', label: 'Structured Output' },
-  ]
-
   return (
-    <div style={{ border: '1px solid #2a3040', padding: 12, marginBottom: 12 }}>
-      <label>
-        Provider
-        <select value={providerId} onChange={(e) => setProviderId(e.target.value)} disabled={!!model}>
-          {providers.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
-        </select>
-      </label>
-      <label>
-        Provider Model ID
-        <input value={providerModelId} onChange={(e) => setProviderModelId(e.target.value)} />
-      </label>
-      <label>
-        Display Name
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-      </label>
-      <label>
-        Context Window
-        <input type="number" value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} />
-      </label>
-      <label>
-        Input Price
-        <input type="number" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} />
-      </label>
-      <label>
-        Output Price
-        <input type="number" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} />
-      </label>
-      <fieldset>
-        <legend>Capabilities</legend>
-        {capabilityLabels.map(({ key, label }) => (
-          <label key={key}>
-            <input type="checkbox" checked={capabilities[key]} onChange={() => toggleCapability(key)} />
-            {label}
-          </label>
-        ))}
-      </fieldset>
-      <label>
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        Enabled
-      </label>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button type="button" onClick={handleSave}>Save Model</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
+    <Panel title={model ? 'Edit model' : 'New model'}>
+      <div className="form-grid">
+        <Field label="Provider">
+          <Select value={providerId} onChange={setProviderId} disabled={!!model} options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
+        </Field>
+        <Field label="Provider Model ID">
+          <Input value={providerModelId} onChange={(e) => setProviderModelId(e.target.value)} />
+        </Field>
+        <Field label="Display Name">
+          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+        </Field>
+        <Field label="Context Window">
+          <Input type="number" value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} />
+        </Field>
+        <Field label="Input Price">
+          <Input type="number" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} />
+        </Field>
+        <Field label="Output Price">
+          <Input type="number" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} />
+        </Field>
       </div>
-    </div>
+
+      <div style={{ marginTop: 'var(--space-3)' }}>
+        <span className="field-label">Capabilities</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
+          {capabilityLabels.map(({ key, label }) => (
+            <Checkbox key={key} checked={capabilities[key]} onChange={() => toggleCapability(key)}>
+              {label}
+            </Checkbox>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-2)' }}>
+        <Checkbox checked={enabled} onChange={(e) => setEnabled(e.target.checked)}>
+          Enabled
+        </Checkbox>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 8 }}>
+        <Button variant="primary" onClick={handleSave}>Save Model</Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </Panel>
   )
 }
 
@@ -193,16 +193,23 @@ export function ModelsView() {
   const editTarget = editTargetId ? models.find((m) => m.id === editTargetId) ?? null : null
 
   return (
-    <section>
-      <h2>Models</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <select value={providerId} onChange={(e) => { setProviderId(e.target.value); refresh(e.target.value) }}>
-          {providers.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
-        </select>
-        <button onClick={handleSyncModels}>Sync Models</button>
-        <button onClick={handleAdd}>Add Model</button>
+    <div className="view">
+      <ViewHeader title="Models" subtitle="The provider-facing model registry for the selected provider.">
+        <Button onClick={handleSyncModels}>Sync Models</Button>
+        <Button variant="primary" onClick={handleAdd}>Add Model</Button>
+      </ViewHeader>
+
+      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span className="field-label" style={{ whiteSpace: 'nowrap' }}>Provider</span>
+        <Select
+          value={providerId}
+          onChange={(v) => { setProviderId(v); refresh(v) }}
+          options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
+          className="provider-filter"
+        />
+        {error && <span className="mono" style={{ color: 'var(--fault)', fontSize: 'var(--fs-1)' }}>{error}</span>}
       </div>
-      {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
+
       {showForm && (
         <ModelForm
           key={editTargetId ?? 'add'}
@@ -213,27 +220,62 @@ export function ModelsView() {
           onCancel={handleCancel}
         />
       )}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th>Name</th><th>Model ID</th><th>Context</th><th>In</th><th>Out</th><th>Capabilities</th><th>Stale</th><th>Enabled</th></tr></thead>
-        <tbody>
-          {models.map((m) => (
-            <tr key={m.id} style={{ borderTop: '1px solid #2a3040' }}>
-              <td>{m.display_name}</td>
-              <td>{m.provider_model_id}</td>
-              <td>{m.context_window ?? '-'}</td>
-              <td>{m.input_price ?? '-'}</td>
-              <td>{m.output_price ?? '-'}</td>
-              <td>{m.capabilities_json ?? '—'}</td>
-              <td>{m.stale ? 'stale' : '—'}</td>
-              <td>
-                <button onClick={() => handleEdit(m)}>Edit</button>
-                <button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</button>
-              </td>
-              <td><button onClick={() => handleDelete(m)}>Delete</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+
+      {!showForm && models.length === 0 && (
+        <EmptyState icon="◇" title="No models for this provider" hint="Run Sync Models or add one manually." />
+      )}
+
+      {models.length > 0 && (
+        <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Model ID</th>
+                <th>Context</th>
+                <th>In</th>
+                <th>Out</th>
+                <th>Capabilities</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {models.map((m) => (
+                <tr key={m.id}>
+                  <td>
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{m.display_name}</span>
+                  </td>
+                  <td className="mono" style={{ color: 'var(--text-dim)' }}>{m.provider_model_id}</td>
+                  <td className="mono">{m.context_window ?? '—'}</td>
+                  <td className="mono">{m.input_price ?? '—'}</td>
+                  <td className="mono">{m.output_price ?? '—'}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', maxWidth: 280 }}>
+                      {capabilityLabels.map(({ key, label }) => (
+                        <Tag key={key} on={parseCapabilities(m.capabilities_json)[key]}>{label}</Tag>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {m.stale && <span style={{ color: 'var(--warn)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-0)', textTransform: 'uppercase' }}>stale</span>}
+                      <Tag on={m.enabled}>{m.enabled ? 'enabled' : 'disabled'}</Tag>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <Button onClick={() => handleEdit(m)}>Edit</Button>
+                      <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
+                      <Button variant="danger" onClick={() => handleDelete(m)}>Del</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }

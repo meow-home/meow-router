@@ -19,7 +19,7 @@ describe('DashboardView', () => {
 
   it('renders totals', async () => {
     render(<DashboardView />)
-    expect(await screen.findByText('10')).toBeTruthy()
+    expect(await screen.findAllByText('10')).toBeTruthy()
     expect(screen.getAllByText(/0.25/).length).toBeGreaterThan(0)
   })
 

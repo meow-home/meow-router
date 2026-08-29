@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { GatewayStatus, GatewayConfigRow } from '@shared/ipc'
+import { ViewHeader, Button, Field, ErrorBanner, Pill, Input, Checkbox, Spinner } from '../components/ui'
 
 export function GatewayView() {
   const [status, setStatus] = useState<GatewayStatus | null>(null)
@@ -31,26 +32,56 @@ export function GatewayView() {
     } catch (e) { setError(String(e)) }
   }
 
-  if (!status || !config) return <section><h2>Local Gateway</h2><p>Loading…</p></section>
+  if (!status || !config) return <div className="view"><h2 className="view-title">Gateway</h2><Spinner label="Loading…" /></div>
 
   return (
-    <section>
-      <h2>Local Gateway</h2>
-      {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
-      <div style={{ marginBottom: 16 }}>
-        <strong>{status.running ? 'Running' : 'Stopped'}</strong> — {status.host}:{status.port}
+    <div className="view">
+      <ViewHeader title="Gateway" subtitle="Local OpenAI-compatible endpoint your coding agent talks to.">
+        {status.running
+          ? <Button variant="live" onClick={handleStop}>■ Stop</Button>
+          : <Button variant="primary" onClick={handleStart}>▶ Start</Button>}
+      </ViewHeader>
+
+      <ErrorBanner>{error}</ErrorBanner>
+
+      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderColor: status.running ? 'var(--live)' : 'var(--line)' }}>
+        <Pill tone={status.running ? 'live' : 'muted'}>{status.running ? 'running' : 'stopped'}</Pill>
+        <div style={{ flex: 1 }}>
+          <div className="mono" style={{ fontSize: 'var(--fs-3)', letterSpacing: '0.03em' }}>
+            http://{status.host}:{status.port}/v1
+          </div>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)' }}>
+            Point an OpenAI-compatible client here to route through Meow Gateway.
+          </div>
+        </div>
+        <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-0)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          {status.running ? 'listening' : 'offline'}
+        </span>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button onClick={handleStart}>Start</button>
-        <button onClick={handleStop}>Stop</button>
+
+      <div style={{ marginTop: 'var(--space-2)' }}>
+        <form onSubmit={handleSave}>
+          <div className="form-grid">
+            <Field label="Host">
+              <Input name="host" defaultValue={config.host} />
+            </Field>
+            <Field label="Port">
+              <Input name="port" type="number" defaultValue={config.port} />
+            </Field>
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-2)' }}>
+            <Checkbox name="auth_enabled" defaultChecked={config.auth_enabled}>
+              Require gateway API key
+            </Checkbox>
+            <Checkbox name="startup_enabled" defaultChecked={config.startup_enabled}>
+              Start on launch
+            </Checkbox>
+          </div>
+          <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 8 }}>
+            <Button type="submit" variant="primary">Save config</Button>
+          </div>
+        </form>
       </div>
-      <form onSubmit={handleSave} style={{ border: '1px solid #2a3040', padding: 16, borderRadius: 8 }}>
-        <label>Host <input name="host" defaultValue={config.host} /></label>
-        <label>Port <input name="port" type="number" defaultValue={config.port} /></label>
-        <label><input name="auth_enabled" type="checkbox" defaultChecked={config.auth_enabled} /> Auth enabled</label>
-        <label><input name="startup_enabled" type="checkbox" defaultChecked={config.startup_enabled} /> Startup enabled</label>
-        <button type="submit">Save config</button>
-      </form>
-    </section>
+    </div>
   )
 }

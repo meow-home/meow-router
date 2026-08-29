@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, VirtualModelRow } from '@shared/ipc'
+import { ViewHeader, Button, Field, ErrorBanner, EmptyState, Pill, Panel, Select, Input, classNames } from '../components/ui'
 
 export function VirtualModelsView() {
   const [vms, setVms] = useState<VirtualModelRow[]>([])
@@ -34,30 +35,73 @@ export function VirtualModelsView() {
     await refresh()
   }
 
+  async function handleToggle(vm: VirtualModelRow) {
+    await window.meowGateway.updateVirtualModel(vm.id, { enabled: !vm.enabled })
+    await refresh()
+  }
+
+  const providerName = (id: string) => providers.find((p) => p.id === id)?.display_name ?? id
+
   return (
-    <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>Virtual Models</h2>
-        <button onClick={() => setShowForm(!showForm)}>New Virtual Model</button>
-      </div>
-      {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
+    <div className="view">
+      <ViewHeader title="Virtual Models" subtitle="Public IDs your coding agent calls — mapped to a concrete provider model.">
+        <Button variant="primary" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Close' : '+ New Virtual Model'}
+        </Button>
+      </ViewHeader>
+
+      <ErrorBanner>{error}</ErrorBanner>
+
       {showForm && (
-        <form onSubmit={handleAdd} style={{ border: '1px solid #2a3040', padding: 16, marginBottom: 16, borderRadius: 8 }}>
-          <label>Display name <input name="display_name" required aria-label="display name" /></label>
-          <label>Provider <select name="provider_id" required>{providers.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
-          <label>Provider model id <input name="provider_model_id" required aria-label="provider model id" /></label>
-          <button type="submit">Save</button>
-        </form>
+        <Panel title="Map a new virtual model">
+          <form onSubmit={handleAdd}>
+            <div className="form-grid">
+              <Field label="Public model name">
+                <Input name="display_name" required aria-label="display name" placeholder="meow-coding" />
+              </Field>
+              <Field label="Provider">
+                <Select name="provider_id" required options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
+              </Field>
+              <Field label="Provider model id">
+                <Input name="provider_model_id" required aria-label="provider model id" placeholder="deepseek-chat" />
+              </Field>
+            </div>
+            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 8 }}>
+              <Button type="submit" variant="primary">Save</Button>
+              <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </form>
+        </Panel>
       )}
-      {vms.map((vm) => (
-        <div key={vm.id} style={{ border: '1px solid #2a3040', padding: 12, marginBottom: 8, borderRadius: 8 }}>
-          <strong>{vm.display_name}</strong> → {vm.provider_id}/{vm.provider_model_id}
-          <div style={{ marginTop: 8 }}>
-            <button onClick={() => handleDelete(vm)}>Delete</button>
-            <button onClick={() => window.meowGateway.updateVirtualModel(vm.id, { enabled: !vm.enabled }).then(refresh)}>{vm.enabled ? 'Disable' : 'Enable'}</button>
+
+      {vms.length === 0 && !showForm && (
+        <EmptyState icon="↦" title="No virtual models" hint="Map a stable public name to a provider model." />
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {vms.map((vm) => (
+          <div key={vm.id} className={classNames('panel', vm.enabled ? '' : 'panel--off')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.02em' }}>
+                    {vm.display_name}
+                  </strong>
+                  <Pill tone={vm.enabled ? 'ok' : 'muted'}>{vm.enabled ? 'active' : 'disabled'}</Pill>
+                </div>
+                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 4 }}>
+                  {providerName(vm.provider_id)} <span style={{ color: 'var(--text-faint)' }}>→</span> {vm.provider_model_id}
+                  <span style={{ color: 'var(--text-faint)' }}> · id </span>{vm.id}
+                </div>
+              </div>
+              <div className="view-actions">
+                <Button onClick={() => handleToggle(vm)}>{vm.enabled ? 'Disable' : 'Enable'}</Button>
+                <Button variant="danger" onClick={() => handleDelete(vm)}>Delete</Button>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
-    </section>
+        ))}
+      </div>
+    </div>
   )
 }
