@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
-import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog } from '../components/ui'
+import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -298,8 +298,8 @@ export function ModelsView() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {m.stale && <span style={{ color: 'var(--warn)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-0)', textTransform: 'uppercase' }}>stale</span>}
-                      <span>{m.enabled ? 'enabled' : 'disabled'}</span>
+                      {m.stale && <Pill tone="warn">stale</Pill>}
+                      <Pill tone={m.enabled ? 'ok' : 'muted'}>{m.enabled ? 'enabled' : 'disabled'}</Pill>
                     </div>
                   </td>
                   <td>
