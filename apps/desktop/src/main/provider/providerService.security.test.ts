@@ -32,7 +32,16 @@ describe('ProviderService security', () => {
     expect(JSON.stringify(rows)).not.toContain('sk-secret')
   })
 
+  it('rejects an unknown provider type', () => {
+    expect(() => service.create({ type: 'nope', display_name: 'x', base_url: 'https://api.example.com/v1' })).toThrow(/Unknown provider type/)
+  })
+
+  it('rejects changing the provider type on update', () => {
+    expect(() => service.update('p1', { type: 'openai' })).toThrow(/cannot be changed/)
+  })
+
   it('rejects an unsafe SSRF base URL', () => {
+    registry.get.mockReturnValue({ id: 'deepseek' })
     expect(() => service.create({ type: 'deepseek', display_name: 'x', base_url: 'http://169.254.169.254' })).toThrow()
   })
 

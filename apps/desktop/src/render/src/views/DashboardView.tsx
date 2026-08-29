@@ -28,11 +28,20 @@ export function DashboardView() {
       <ul>{totals.byProvider.map((bp) => <li key={bp.provider_id}>{bp.provider_id}: {bp.request_count} ({bp.total_cost ?? 0})</li>)}</ul>
       <h3>Recent requests</h3>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th>Request ID</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Status</th></tr></thead>
+        <thead><tr><th>Request ID</th><th>Virtual Model</th><th>Provider</th><th>Provider Model</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Status</th><th>Error</th><th>Created</th></tr></thead>
         <tbody>
           {recent.map((r) => (
             <tr key={r.id} style={{ borderTop: '1px solid #2a3040' }}>
-              <td>{r.request_id}</td><td>{r.provider_model_id}</td><td>{r.input_tokens + r.output_tokens + r.cached_tokens}</td><td>{r.estimated_cost ?? 0}</td><td>{r.status}</td>
+              <td>{r.request_id}</td>
+              <td>{r.virtual_model_id}</td>
+              <td>{r.provider_id}</td>
+              <td>{r.provider_model_id}</td>
+              <td>{r.input_tokens + r.output_tokens + r.cached_tokens}</td>
+              <td>{r.estimated_cost ?? 0}</td>
+              <td>{r.latency_ms}ms</td>
+              <td>{r.status}</td>
+              <td>{r.error_code ?? '—'}</td>
+              <td>{r.created_at}</td>
             </tr>
           ))}
         </tbody>

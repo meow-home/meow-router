@@ -42,6 +42,9 @@ export class ProviderService {
   }
 
   create(input: NewProviderInput): ProviderRow {
+    if (!this.registry.get(input.type)) {
+      throw new ProviderError({ type: 'INVALID_INPUT', message: `Unknown provider type: ${input.type}`, retryable: false })
+    }
     if (input.base_url) {
       const sr = assertSafeEndpoint(input.base_url)
       if (!sr.ok) {
@@ -52,6 +55,9 @@ export class ProviderService {
   }
 
   update(id: string, patch: Partial<Omit<ProviderRow, 'id' | 'created_at'>>): ProviderRow | undefined {
+    if (patch.type !== undefined) {
+      throw new ProviderError({ type: 'INVALID_INPUT', message: 'Provider type cannot be changed after creation.', retryable: false })
+    }
     if (patch.base_url !== undefined && patch.base_url !== null) {
       const sr = assertSafeEndpoint(patch.base_url)
       if (!sr.ok) {

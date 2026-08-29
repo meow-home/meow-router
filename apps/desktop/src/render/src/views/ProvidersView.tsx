@@ -66,14 +66,14 @@ export function ProvidersView() {
           <label>
             Type <select name="type" required>
               {types.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}
-              {types.length === 0 && <option value="deepseek">DeepSeek</option>}
+              {types.length === 0 && <option value="">Select a type</option>}
             </select>
           </label>
           <label>
             Display name <input name="display_name" required aria-label="display name" />
           </label>
           <label>
-            Base URL <input name="base_url" placeholder="https://api.deepseek.com/v1" />
+            Base URL <input name="base_url" placeholder="https://api.example.com/v1" />
           </label>
           <label>
             API key <input name="key" type="password" aria-label="api key" />
@@ -85,6 +85,7 @@ export function ProvidersView() {
         <div key={p.id} style={{ border: '1px solid #2a3040', padding: 12, marginBottom: 8, borderRadius: 8 }}>
           <strong>{p.display_name}</strong> <span style={{ opacity: 0.6 }}>[{p.type}]</span>
           {p.hasCredential ? <em style={{ color: '#4caf50' }}>  ✓ key set</em> : <em style={{ color: '#ff9800' }}>  no key</em>}
+          <div style={{ marginTop: 4, opacity: 0.7 }}>URL: {p.base_url || '—'}</div>
           <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
             <button onClick={() => handleToggle(p)}>{p.enabled ? 'Disable' : 'Enable'}</button>
             <button onClick={() => handleTest(p)}>Test</button>

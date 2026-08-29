@@ -69,7 +69,8 @@ export const ERROR_TYPES = [
   'REQUEST_REJECTED',
   'TIMEOUT',
   'STREAM_ERROR',
-  'INTERNAL_ERROR'
+  'INTERNAL_ERROR',
+  'INVALID_INPUT'
 ] as const
 
 export type GatewayErrorType = (typeof ERROR_TYPES)[number]

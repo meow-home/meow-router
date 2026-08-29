@@ -46,7 +46,7 @@ export function ModelsView() {
       </div>
       {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th>Name</th><th>Model ID</th><th>Context</th><th>In</th><th>Out</th><th>Enabled</th></tr></thead>
+        <thead><tr><th>Name</th><th>Model ID</th><th>Context</th><th>In</th><th>Out</th><th>Capabilities</th><th>Enabled</th></tr></thead>
         <tbody>
           {models.map((m) => (
             <tr key={m.id} style={{ borderTop: '1px solid #2a3040' }}>
@@ -55,6 +55,7 @@ export function ModelsView() {
               <td>{m.context_window ?? '-'}</td>
               <td>{m.input_price ?? '-'}</td>
               <td>{m.output_price ?? '-'}</td>
+              <td>{m.capabilities_json ?? '—'}</td>
               <td><button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</button></td>
               <td><button onClick={() => handleDelete(m)}>Delete</button></td>
             </tr>
