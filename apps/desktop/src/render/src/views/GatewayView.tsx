@@ -1,21 +1,36 @@
 import { useEffect, useState } from 'react'
-import type { GatewayStatus, GatewayConfigRow } from '@shared/ipc'
-import { ViewHeader, Button, Field, ErrorBanner, Pill, Input, Checkbox, Spinner } from '../components/ui'
+import type { GatewayStatus, GatewayConfigRow, GatewayKeyInfo } from '@shared/ipc'
+import { ViewHeader, Button, Field, ErrorBanner, Pill, Input, Checkbox, Spinner, ConfirmDialog } from '../components/ui'
 
 export function GatewayView() {
   const [status, setStatus] = useState<GatewayStatus | null>(null)
   const [config, setConfig] = useState<GatewayConfigRow | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [keyInfo, setKeyInfo] = useState<GatewayKeyInfo | null>(null)
+  const [confirmRegen, setConfirmRegen] = useState(false)
 
   const refresh = async () => {
-    const [s, c] = await Promise.all([window.meowGateway.gatewayGetStatus(), window.meowGateway.gatewayGetConfig()])
-    setStatus(s); setConfig(c)
+    const [s, c, k] = await Promise.all([
+      window.meowGateway.gatewayGetStatus(),
+      window.meowGateway.gatewayGetConfig(),
+      window.meowGateway.gatewayGetKeyInfo()
+    ])
+    setStatus(s); setConfig(c); setKeyInfo(k)
   }
 
   useEffect(() => { refresh().catch((e) => setError(String(e))) }, [])
 
   async function handleStart() { setStatus(await window.meowGateway.gatewayStart()) }
   async function handleStop() { setStatus(await window.meowGateway.gatewayStop()) }
+
+  async function handleCopyKey() {
+    try { await window.meowGateway.gatewayCopyKey() } catch (e) { setError(String(e)) }
+  }
+
+  async function handleRegenerate() {
+    setConfirmRegen(false)
+    try { setKeyInfo(await window.meowGateway.gatewayRegenerateKey()) } catch (e) { setError(String(e)) }
+  }
 
   async function handleSave(ev: React.FormEvent<HTMLFormElement>) {
     ev.preventDefault()
@@ -60,6 +75,22 @@ export function GatewayView() {
       </div>
 
       <div style={{ marginTop: 'var(--space-2)' }}>
+        <Field label="Gateway API key">
+          {keyInfo?.present ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="mono" style={{ flex: 1 }}>{keyInfo.masked}</span>
+              <Button onClick={handleCopyKey}>Copy</Button>
+              <Button variant="danger" onClick={() => setConfirmRegen(true)}>Regenerate</Button>
+            </div>
+          ) : (
+            <span style={{ color: 'var(--red)', fontSize: 'var(--fs-1)' }}>
+              The gateway key could not be read from the credential store.
+            </span>
+          )}
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-2)' }}>
         <form onSubmit={handleSave}>
           <div className="form-grid">
             <Field label="Host">
@@ -82,6 +113,15 @@ export function GatewayView() {
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={confirmRegen}
+        title="Regenerate gateway key"
+        message="Every client using the current key stops working until you give it the new one."
+        confirmLabel="Regenerate key"
+        onConfirm={handleRegenerate}
+        onCancel={() => setConfirmRegen(false)}
+      />
     </div>
   )
 }
