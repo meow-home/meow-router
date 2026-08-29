@@ -15,9 +15,9 @@ hasCredential(ref: string): Promise<boolean>
 
 ## Acceptance criteria
 
-- [ ] renderer never receives credentials unless strictly required by an internal main-process operation;
-- [ ] credential survives application restart;
-- [ ] credential is not stored in SQLite;
-- [ ] credential is not logged;
-- [ ] unit tests use a mock credential backend;
-- [ ] errors are mapped to safe user-facing messages.
+- [x] renderer never receives credentials unless strictly required by an internal main-process operation;
+- [x] credential survives application restart;
+- [x] credential is not stored in SQLite;
+- [x] credential is not logged;
+- [x] unit tests use a mock credential backend;
+- [x] errors are mapped to safe user-facing messages.

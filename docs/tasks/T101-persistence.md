@@ -15,12 +15,12 @@ Implement SQLite persistence for non-secret application data.
 
 ## Acceptance criteria
 
-- [ ] database is created in the platform application-data directory.
-- [ ] migrations run automatically.
-- [ ] migrations are idempotent.
-- [ ] provider CRUD is tested.
-- [ ] secrets are absent from database records.
-- [ ] database errors are handled without crashing renderer.
+- [x] database is created in the platform application-data directory.
+- [x] migrations run automatically.
+- [x] migrations are idempotent.
+- [x] provider CRUD is tested.
+- [x] secrets are absent from database records.
+- [x] database errors are handled without crashing renderer.
 
 ## Out of scope
 
