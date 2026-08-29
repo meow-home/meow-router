@@ -4,7 +4,8 @@ import type { ProviderRepository } from '../database/repositories/providerReposi
 import type { ModelRepository } from '../database/repositories/modelRepository'
 import type { AccountRepository } from '../database/repositories/accountRepository'
 import type { CredentialService } from '../credentials/credentialService'
-import type { ProviderRegistry } from '@meow-gateway/provider-core'
+import type { ModelRow } from '../database/types'
+import { ProviderError, type ProviderRegistry } from '@meow-gateway/provider-core'
 
 const providerRow = {
   id: 'p1',
@@ -35,7 +36,7 @@ describe('ProviderService', () => {
     delete: vi.fn()
   }
   const accountRepo = { listByProvider: vi.fn().mockReturnValue([]), create: vi.fn(), update: vi.fn() }
-  const modelRepo = { upsertByProviderModel: vi.fn(), findByProviderModel: vi.fn(), listByProvider: vi.fn(), update: vi.fn() }
+  const modelRepo = { upsertByProviderModel: vi.fn(), findByProviderModel: vi.fn(), listByProvider: vi.fn(), update: vi.fn(), create: vi.fn(), findById: vi.fn() }
   const credentials = {
     getCredential: vi.fn().mockResolvedValue('sk-secret'),
     hasCredential: vi.fn(),
@@ -130,5 +131,82 @@ describe('ProviderService', () => {
     expect(types).toHaveLength(1)
     expect(types[0].id).toBe('deepseek')
     expect(types[0].displayName).toBe('DeepSeek')
+  })
+
+  describe('createModel', () => {
+    const newModel = {
+      provider_id: 'p1',
+      provider_model_id: 'deepseek-chat',
+      display_name: 'DeepSeek Chat'
+    }
+
+    it('throws INVALID_INPUT when the provider does not exist', () => {
+      providerRepo.findById.mockReturnValue(undefined)
+      expect(() => service.createModel(newModel)).toThrowError(ProviderError)
+      let err: unknown
+      try {
+        service.createModel(newModel)
+      } catch (e) {
+        err = e
+      }
+      expect((err as ProviderError).type).toBe('INVALID_INPUT')
+      expect((err as ProviderError).message).toContain('Provider not found')
+    })
+
+    it('delegates to modelRepo.create and returns its result for an existing provider', () => {
+      const created: ModelRow = { ...newModel, id: 'm1', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false }
+      providerRepo.findById.mockReturnValue(providerRow)
+      modelRepo.create.mockReturnValue(created)
+      const result = service.createModel(newModel)
+      expect(modelRepo.create).toHaveBeenCalledWith(newModel)
+      expect(result).toBe(created)
+    })
+
+    it('passes the input object through unchanged', () => {
+      providerRepo.findById.mockReturnValue(providerRow)
+      modelRepo.create.mockReturnValue({} as ModelRow)
+      service.createModel(newModel)
+      expect(modelRepo.create).toHaveBeenCalledWith(newModel)
+      expect(modelRepo.create).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('updateModel', () => {
+    it('throws INVALID_INPUT when patch.provider_id is provided', () => {
+      modelRepo.update.mockReturnValue({ id: 'm1', provider_id: 'p1', provider_model_id: 'm', display_name: 'M', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false })
+      expect(() => service.updateModel('m1', { provider_id: 'p2' })).toThrowError(ProviderError)
+      let err: unknown
+      try {
+        service.updateModel('m1', { provider_id: 'p2' })
+      } catch (e) {
+        err = e
+      }
+      expect((err as ProviderError).type).toBe('INVALID_INPUT')
+      expect(modelRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('throws MODEL_NOT_FOUND when findById returns undefined', () => {
+      modelRepo.findById.mockReturnValue(undefined)
+      expect(() => service.updateModel('m1', { display_name: 'M' })).toThrowError(ProviderError)
+      let err: unknown
+      try {
+        service.updateModel('m1', { display_name: 'M' })
+      } catch (e) {
+        err = e
+      }
+      expect((err as ProviderError).type).toBe('MODEL_NOT_FOUND')
+      expect(modelRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('delegates to modelRepo.update and returns its result when the model exists', () => {
+      const existing: ModelRow = { id: 'm1', provider_id: 'p1', provider_model_id: 'm', display_name: 'M', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false }
+      const updated: ModelRow = { ...existing, display_name: 'M2' }
+      modelRepo.findById.mockReturnValue(existing)
+      modelRepo.update.mockReturnValue(updated)
+      const patch = { display_name: 'M2' }
+      const result = service.updateModel('m1', patch)
+      expect(modelRepo.update).toHaveBeenCalledWith('m1', patch)
+      expect(result).toBe(updated)
+    })
   })
 })
