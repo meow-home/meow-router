@@ -51,7 +51,7 @@ export interface GatewayServer {
 export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServerOptions = {}): GatewayServer {
   const host = opts.host ?? DEFAULT_HOST
   const port = opts.port ?? DEFAULT_PORT
-  const version = opts.version ?? '0.2.0'
+  const version = opts.version ?? '0.3.0'
   const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const logger = deps.logger ?? nullLogger
 
