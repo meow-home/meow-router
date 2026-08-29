@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidModelInput } from './bootstrap'
+import { isValidModelInput, isValidModelPatch } from './bootstrap'
 
 function omit<T extends Record<string, unknown>>(source: T, key: string): Record<string, unknown> {
   const copy: Record<string, unknown> = { ...source }
@@ -87,5 +87,63 @@ describe('isValidModelInput', () => {
 
   it('rejects a non-string capabilities_json', () => {
     expect(isValidModelInput({ ...valid, capabilities_json: { foo: 'bar' } })).toBe(false)
+  })
+})
+
+describe('isValidModelPatch', () => {
+  const base: Record<string, unknown> = {
+    display_name: 'GPT-4o',
+    context_window: 128000,
+    input_price: 0.0000025,
+    output_price: 0.00001,
+    capabilities_json: '{"supports_tools":true}',
+    enabled: true
+  }
+
+  it('accepts a valid partial patch (no required provider fields)', () => {
+    expect(isValidModelPatch({ display_name: 'GPT-4o Mini' })).toBe(true)
+    expect(isValidModelPatch({ enabled: false })).toBe(true)
+    expect(isValidModelPatch(base)).toBe(true)
+  })
+
+  it('accepts an empty patch (all fields optional)', () => {
+    expect(isValidModelPatch({})).toBe(true)
+  })
+
+  it('rejects a non-object input', () => {
+    expect(isValidModelPatch(null)).toBe(false)
+    expect(isValidModelPatch('nope')).toBe(false)
+    expect(isValidModelPatch([])).toBe(false)
+  })
+
+  it('rejects provider_id in a patch (immutable)', () => {
+    expect(isValidModelPatch({ ...base, provider_id: 'p2' })).toBe(false)
+  })
+
+  it('rejects a negative context_window', () => {
+    expect(isValidModelPatch({ context_window: -1 })).toBe(false)
+    expect(isValidModelPatch({ context_window: 128000.5 })).toBe(false)
+  })
+
+  it('rejects a negative input_price', () => {
+    expect(isValidModelPatch({ input_price: -0.01 })).toBe(false)
+  })
+
+  it('rejects a negative output_price', () => {
+    expect(isValidModelPatch({ output_price: -0.01 })).toBe(false)
+  })
+
+  it('rejects an empty display_name', () => {
+    expect(isValidModelPatch({ display_name: '' })).toBe(false)
+  })
+
+  it('rejects a non-string capabilities_json', () => {
+    expect(isValidModelPatch({ capabilities_json: { foo: 'bar' } })).toBe(false)
+    expect(isValidModelPatch({ capabilities_json: 'x'.repeat(4097) })).toBe(false)
+  })
+
+  it('rejects a non-boolean enabled', () => {
+    expect(isValidModelPatch({ enabled: 'true' })).toBe(false)
+    expect(isValidModelPatch({ enabled: 1 })).toBe(false)
   })
 })

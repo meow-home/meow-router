@@ -121,6 +121,28 @@ describe('ProviderService', () => {
     expect(modelRepo.upsertByProviderModel).toHaveBeenCalledWith(expect.objectContaining({ provider_model_id: 'a', enabled: false }))
   })
 
+  it('resets stale to false when a previously-absent model reappears in the API response', async () => {
+    const adapter = { id: 'deepseek', getModels: vi.fn().mockResolvedValue([
+      { id: 'a', providerModelId: 'a', displayName: 'A', capabilities: { streaming: true, tools: false, vision: false, reasoning: false, structuredOutput: false } }
+    ]) }
+    registry.get.mockReturnValue(adapter)
+    credentials.getCredential.mockResolvedValue('secret')
+    providerRepo.findById.mockReturnValue(providerRow)
+    // Model 'a' was previously discovered, then absent (stale=1), now present again.
+    modelRepo.findByProviderModel.mockReturnValue({ id: 'm1', provider_id: 'p1', provider_model_id: 'a', display_name: 'A', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: false, discovered_at: '', stale: true })
+    modelRepo.listByProvider.mockReturnValue([
+      { id: 'm1', provider_id: 'p1', provider_model_id: 'a', display_name: 'A', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: false, discovered_at: '', stale: true }
+    ])
+    modelRepo.upsertByProviderModel.mockImplementation((input) => ({ ...(input as object), id: 'm1', enabled: false, stale: false, discovered_at: '' }) as never)
+
+    await service.discoverModels('p1')
+
+    // Present model is upserted with stale reset to false; the user's disabled choice is preserved.
+    expect(modelRepo.upsertByProviderModel).toHaveBeenCalledWith(expect.objectContaining({ provider_model_id: 'a', stale: false, enabled: false }))
+    // Since the model is present, it must NOT be marked stale.
+    expect(modelRepo.update).not.toHaveBeenCalled()
+  })
+
   it('rejects an unsafe SSRF base URL on create', () => {
     expect(() => service.create({ type: 'deepseek', display_name: 'x', base_url: 'http://169.254.169.254' })).toThrow()
   })

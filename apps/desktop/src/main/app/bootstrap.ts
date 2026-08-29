@@ -241,8 +241,7 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.model.update, async (_e, id: string, patch: Record<string, unknown>): Promise<IpcResult<ModelRow>> => {
-    if (!isNonEmptyString(id) || !isObject(patch)) return badRequest('Invalid update arguments.', 'INVALID_MODEL')
-    if (patch['provider_id'] !== undefined) return badRequest('provider_id cannot be changed.', 'INVALID_MODEL')
+    if (!isNonEmptyString(id) || !isObject(patch) || !isValidModelPatch(patch)) return badRequest('Invalid update arguments.', 'INVALID_MODEL')
     return wrap(() => providerService.updateModel(id, patch as Partial<Omit<NewModel, 'id'>>) as ModelRow)
   })
 
@@ -336,6 +335,22 @@ export function isValidModelInput(v: unknown): v is NewModel {
   if (!isNonEmptyString(v['provider_id'])) return false
   if (!isNonEmptyString(v['provider_model_id'])) return false
   if (!isNonEmptyString(v['display_name'])) return false
+  if (v['context_window'] !== undefined && v['context_window'] !== null && !isPositiveInt(v['context_window'])) return false
+  if (v['input_price'] !== undefined && v['input_price'] !== null && !isNonNegativeNumber(v['input_price'])) return false
+  if (v['output_price'] !== undefined && v['output_price'] !== null && !isNonNegativeNumber(v['output_price'])) return false
+  if (v['capabilities_json'] !== undefined && v['capabilities_json'] !== null && (!isNonEmptyString(v['capabilities_json']) || v['capabilities_json'].length > 4096)) return false
+  if (v['enabled'] !== undefined && typeof v['enabled'] !== 'boolean') return false
+  return true
+}
+
+// A model PATCH is partial: only the fields present are validated. `provider_id`
+// is immutable and rejected (same rule as `isValidModelInput` for a create),
+// but `provider_id`/`provider_model_id`/`display_name` are NOT required here.
+export function isValidModelPatch(v: unknown): v is Partial<Omit<NewModel, 'id'>> {
+  if (!isObject(v)) return false
+  if (v['provider_id'] !== undefined) return false
+  if (v['provider_model_id'] !== undefined && !isNonEmptyString(v['provider_model_id'])) return false
+  if (v['display_name'] !== undefined && !isNonEmptyString(v['display_name'])) return false
   if (v['context_window'] !== undefined && v['context_window'] !== null && !isPositiveInt(v['context_window'])) return false
   if (v['input_price'] !== undefined && v['input_price'] !== null && !isNonNegativeNumber(v['input_price'])) return false
   if (v['output_price'] !== undefined && v['output_price'] !== null && !isNonNegativeNumber(v['output_price'])) return false

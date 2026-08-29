@@ -143,7 +143,10 @@ export class ProviderService {
         input_price: m.inputPrice ?? null,
         output_price: m.outputPrice ?? null,
         capabilities_json: JSON.stringify(m.capabilities),
-        enabled: existing?.enabled ?? true
+        enabled: existing?.enabled ?? true,
+        // A model present in the API response is never stale. This resets a
+        // prior stale=1 when a previously-absent model reappears.
+        stale: false
       })
     }
 

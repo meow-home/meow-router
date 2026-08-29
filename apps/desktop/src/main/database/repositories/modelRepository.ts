@@ -4,6 +4,10 @@ import type { ModelRow, NewModel } from '../types'
 
 type RawModel = Omit<ModelRow, 'enabled' | 'stale'> & { enabled: number; stale: number }
 
+// Upsert input: a full model payload without a caller-supplied id. `stale` is
+// optional and defaults to the previous value on update (false on create).
+type UpsertModelInput = Omit<NewModel, 'id'> & { stale?: boolean }
+
 function mapRow(r: RawModel): ModelRow {
   return { ...r, enabled: r.enabled === 1, stale: r.stale === 1 }
 }
@@ -64,7 +68,7 @@ export class ModelRepository {
     return (this.db.prepare('SELECT * FROM model ORDER BY provider_id, display_name').all() as RawModel[]).map(mapRow)
   }
 
-  upsertByProviderModel(input: Omit<NewModel, 'id'>): ModelRow {
+  upsertByProviderModel(input: UpsertModelInput): ModelRow {
     const existing = this.db
       .prepare('SELECT * FROM model WHERE provider_id = ? AND provider_model_id = ?')
       .get([input.provider_id, input.provider_model_id]) as RawModel | undefined
@@ -79,7 +83,9 @@ export class ModelRepository {
         capabilities_json: input.capabilities_json ?? prev.capabilities_json,
         enabled: input.enabled ?? prev.enabled,
         discovered_at: new Date().toISOString(),
-        stale: prev.stale
+        // A model present in the API response is not stale. This resets a prior
+        // stale=1 when the model reappears after being absent.
+        stale: input.stale ?? prev.stale
       }
       this.db
         .prepare(
