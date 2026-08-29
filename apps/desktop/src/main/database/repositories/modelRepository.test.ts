@@ -58,4 +58,15 @@ describe('ModelRepository', () => {
     expect(repo.delete(created.id)).toBe(true)
     expect(repo.findByProviderModel('p1', 'deepseek-chat')).toBeUndefined()
   })
+
+  it('defaults stale to false and round-trips the flag', () => {
+    const created = repo.upsertByProviderModel({
+      provider_id: 'p1',
+      provider_model_id: 'deepseek-chat',
+      display_name: 'DeepSeek Chat'
+    })
+    expect(created.stale).toBe(false)
+    const updated = repo.update(created.id, { stale: true })
+    expect(updated?.stale).toBe(true)
+  })
 })

@@ -35,6 +35,7 @@ export interface ModelRow {
   capabilities_json: string | null
   enabled: boolean
   discovered_at: string
+  stale: boolean
 }
 
 export interface GatewayConfigRow {

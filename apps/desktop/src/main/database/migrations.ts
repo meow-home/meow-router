@@ -145,6 +145,15 @@ export const MIGRATIONS: Migration[] = [
         ALTER TABLE request_usage ADD COLUMN route_attempt INTEGER NOT NULL DEFAULT 0;
       `)
     }
+  },
+  {
+    version: 5,
+    name: 'model_stale',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE model ADD COLUMN stale INTEGER NOT NULL DEFAULT 0;
+      `)
+    }
   }
 ]
 

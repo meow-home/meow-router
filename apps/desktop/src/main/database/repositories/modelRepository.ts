@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto'
 import type { PersistedConnection } from '../connection'
 import type { ModelRow, NewModel } from '../types'
 
-type RawModel = Omit<ModelRow, 'enabled'> & { enabled: number }
+type RawModel = Omit<ModelRow, 'enabled' | 'stale'> & { enabled: number; stale: number }
 
 function mapRow(r: RawModel): ModelRow {
-  return { ...r, enabled: r.enabled === 1 }
+  return { ...r, enabled: r.enabled === 1, stale: r.stale === 1 }
 }
 
 export class ModelRepository {
@@ -22,17 +22,19 @@ export class ModelRepository {
       output_price: input.output_price ?? null,
       capabilities_json: input.capabilities_json ?? null,
       enabled: input.enabled ?? true,
-      discovered_at: new Date().toISOString()
+      discovered_at: new Date().toISOString(),
+      stale: false
     }
     this.db
       .prepare(
         `INSERT INTO model (id, provider_id, provider_model_id, display_name, context_window,
-                            input_price, output_price, capabilities_json, enabled, discovered_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                            input_price, output_price, capabilities_json, enabled, discovered_at, stale)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run([
         row.id, row.provider_id, row.provider_model_id, row.display_name, row.context_window,
-        row.input_price, row.output_price, row.capabilities_json, row.enabled ? 1 : 0, row.discovered_at
+        row.input_price, row.output_price, row.capabilities_json, row.enabled ? 1 : 0, row.discovered_at,
+        row.stale ? 1 : 0
       ])
     this.db.save()
     return row
@@ -76,18 +78,20 @@ export class ModelRepository {
         output_price: input.output_price ?? prev.output_price,
         capabilities_json: input.capabilities_json ?? prev.capabilities_json,
         enabled: input.enabled ?? prev.enabled,
-        discovered_at: new Date().toISOString()
+        discovered_at: new Date().toISOString(),
+        stale: prev.stale
       }
       this.db
         .prepare(
           `UPDATE model
            SET display_name = ?, context_window = ?, input_price = ?, output_price = ?,
-               capabilities_json = ?, enabled = ?, discovered_at = ?
+               capabilities_json = ?, enabled = ?, discovered_at = ?, stale = ?
            WHERE id = ?`
         )
         .run([
           merged.display_name, merged.context_window, merged.input_price, merged.output_price,
-          merged.capabilities_json, merged.enabled ? 1 : 0, merged.discovered_at, merged.id
+          merged.capabilities_json, merged.enabled ? 1 : 0, merged.discovered_at, merged.stale ? 1 : 0,
+          merged.id
         ])
       this.db.save()
       return merged
@@ -102,6 +106,7 @@ export class ModelRepository {
       ...existing,
       ...patch,
       enabled: patch.enabled ?? existing.enabled,
+      stale: patch.stale ?? existing.stale,
       discovered_at: existing.discovered_at
     }
     this.db
@@ -109,13 +114,14 @@ export class ModelRepository {
         `UPDATE model
          SET provider_id = ?, provider_model_id = ?, display_name = ?,
              context_window = ?, input_price = ?, output_price = ?,
-             capabilities_json = ?, enabled = ?, discovered_at = ?
+             capabilities_json = ?, enabled = ?, discovered_at = ?, stale = ?
          WHERE id = ?`
       )
       .run([
         merged.provider_id, merged.provider_model_id, merged.display_name,
         merged.context_window, merged.input_price, merged.output_price,
-        merged.capabilities_json, merged.enabled ? 1 : 0, merged.discovered_at, merged.id
+        merged.capabilities_json, merged.enabled ? 1 : 0, merged.discovered_at, merged.stale ? 1 : 0,
+        merged.id
       ])
     this.db.save()
     return merged
