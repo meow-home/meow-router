@@ -96,6 +96,59 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.43)(jsdom@24.1.3)
 
+  packages/provider-deepseek:
+    dependencies:
+      '@meow-gateway/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
+      '@meow-gateway/provider-openai':
+        specifier: workspace:*
+        version: link:../provider-openai
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.5.0
+        version: 9.39.5
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      eslint:
+        specifier: ^9.5.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.0.0
+        version: 8.68.0(eslint@9.39.5)(typescript@5.9.3)
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.43)(jsdom@24.1.3)
+
+  packages/provider-openai:
+    dependencies:
+      '@meow-gateway/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.5.0
+        version: 9.39.5
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      eslint:
+        specifier: ^9.5.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.0.0
+        version: 8.68.0(eslint@9.39.5)(typescript@5.9.3)
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.43)(jsdom@24.1.3)
+
 packages:
 
   7zip-bin@5.2.0:

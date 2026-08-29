@@ -3,6 +3,8 @@
 
 export interface ProviderContext {
   credentialRef: string
+  // Resolved secret value (main-process only). Never exposed to the renderer.
+  credential?: string
   baseUrl?: string
   signal: AbortSignal
   requestId: string
@@ -53,8 +55,9 @@ export interface NormalizedChatChunk {
   id: string
   kind: 'content_delta' | 'tool_call_delta' | 'finish'
   delta?: string
-  toolCallIndex?: number
+  toolCall?: ToolCallDelta
   finishReason?: string
+  usage?: UsageExtraction
 }
 
 export const ERROR_TYPES = [
@@ -70,6 +73,55 @@ export const ERROR_TYPES = [
 ] as const
 
 export type GatewayErrorType = (typeof ERROR_TYPES)[number]
+
+// Normalized provider error. Never includes raw secret/header material.
+export interface ProviderErrorInfo {
+  type: GatewayErrorType
+  message: string
+  status?: number
+  providerCode?: string
+  retryable?: boolean
+  retryAfterMs?: number
+}
+
+export class ProviderError extends Error {
+  readonly type: GatewayErrorType
+  readonly status?: number
+  readonly providerCode?: string
+  readonly retryable: boolean
+  readonly retryAfterMs?: number
+
+  constructor(info: ProviderErrorInfo) {
+    super(info.message)
+    this.name = 'ProviderError'
+    this.type = info.type
+    this.status = info.status
+    this.providerCode = info.providerCode
+    this.retryable = info.retryable ?? false
+    this.retryAfterMs = info.retryAfterMs
+  }
+}
+
+// Tool-call delta carried in a streamed chunk.
+export interface ToolCallDelta {
+  index: number
+  id?: string
+  name?: string
+  arguments?: string
+}
+
+// A usage / token accounting summary extracted from a provider response.
+export interface UsageExtraction {
+  inputTokens: number
+  outputTokens: number
+  cachedTokens?: number
+}
+
+// Chat request may carry credential options; unused here but kept generic.
+export interface ChatOptions {
+  signal: AbortSignal
+  requestId: string
+}
 
 export interface ProviderAdapter {
   id: string

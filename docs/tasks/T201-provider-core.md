@@ -16,8 +16,8 @@ Create provider-neutral interfaces and normalized model/request/response types.
 
 ## Acceptance criteria
 
-- [ ] no UI dependencies;
-- [ ] no SQLite dependencies;
-- [ ] provider adapter can be mocked;
-- [ ] stream chunks support text, tool calls and finish reason;
-- [ ] abort signal is part of request context.
+- [x] no UI dependencies;
+- [x] no SQLite dependencies;
+- [x] provider adapter can be mocked;
+- [x] stream chunks support text, tool calls and finish reason;
+- [x] abort signal is part of request context.

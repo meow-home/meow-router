@@ -16,6 +16,6 @@ Add DeepSeek using the provider adapter architecture.
 
 ## Acceptance criteria
 
-- [ ] adapter passes shared provider contract tests;
-- [ ] live provider test is optional and disabled by default;
-- [ ] no provider-specific logic leaks into gateway router.
+- [x] adapter passes shared provider contract tests;
+- [x] live provider test is optional and disabled by default;
+- [x] no provider-specific logic leaks into gateway router.

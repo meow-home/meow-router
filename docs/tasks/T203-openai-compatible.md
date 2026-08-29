@@ -18,9 +18,9 @@ Implement a generic adapter for providers exposing OpenAI-compatible endpoints.
 
 ## Acceptance criteria
 
-- [ ] mock provider tests pass;
-- [ ] non-streaming request works;
-- [ ] streaming request works;
-- [ ] auth failure is normalized;
-- [ ] rate limit is normalized;
-- [ ] upstream API key never appears in logs.
+- [x] mock provider tests pass;
+- [x] non-streaming request works;
+- [x] streaming request works;
+- [x] auth failure is normalized;
+- [x] rate limit is normalized;
+- [x] upstream API key never appears in logs.
