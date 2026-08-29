@@ -143,10 +143,11 @@ code, .mono { font-family: var(--font-mono); }
 }
 .rail__logo {
   width: 30px; height: 30px; flex-shrink: 0;
-  display: grid; place-items: center;
-  font-family: var(--font-mono); font-weight: var(--fw-bold);
-  font-size: var(--fs-3); color: #ffffff;
-  background: var(--accent); border-radius: var(--radius-sm);
+  display: block;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  /* keep the near-black app chrome around the glyph instead of a solid accent tile */
+  background: transparent;
 }
 .rail__name {
   font-family: var(--font-display); font-weight: var(--fw-semibold);

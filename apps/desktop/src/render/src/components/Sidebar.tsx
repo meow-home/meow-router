@@ -1,3 +1,5 @@
+import logo from '../assets/logo.png'
+
 export type View = 'providers' | 'models' | 'virtualmodels' | 'gateway' | 'dashboard'
 
 const items: Array<{ id: View; label: string; index: string }> = [
@@ -12,7 +14,7 @@ export function Sidebar({ active, onSelect }: { active: View; onSelect: (v: View
   return (
     <aside className="rail">
       <div className="rail__brand">
-        <div className="rail__logo" aria-hidden="true">M</div>
+        <img className="rail__logo" src={logo} alt="Meow Gateway logo" width={30} height={30} />
         <div>
           <div className="rail__name">MEOW</div>
           <div className="rail__tag">GATEWAY</div>

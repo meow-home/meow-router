@@ -1,5 +1,7 @@
 # Meow Gateway
 
+<img src="meow-router-logo.png" alt="Meow Gateway logo" width="180" align="center" />
+
 Local AI Model Gateway & Provider Manager for coding agents.
 
 ## Vision
