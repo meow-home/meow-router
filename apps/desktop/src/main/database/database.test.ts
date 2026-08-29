@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { openDatabase, closeDatabase, type PersistedConnection } from './connection'
+import { migrate } from './migrations'
 import {
   ProviderRepository,
   AccountRepository,
@@ -35,15 +36,15 @@ describe('database connection & migrations', () => {
 
   it('records migrations exactly once', () => {
     const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]
-    expect(rows.length).toBe(5)
-    expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
+    expect(rows.length).toBe(6)
+    expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
   })
 
   it('applies migrations in ascending version order', () => {
     const rows = db
       .prepare('SELECT version FROM schema_migrations ORDER BY version')
       .all() as { version: number }[]
-    expect(rows.map((r) => r.version)).toEqual([1, 2, 3, 4, 5])
+    expect(rows.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6])
   })
 })
 
@@ -186,7 +187,19 @@ describe('GatewayConfigRepository', () => {
     const cfg = repo.get()
     expect(cfg.host).toBe('127.0.0.1')
     expect(cfg.port).toBe(8317)
-    expect(cfg.auth_enabled).toBe(false)
+    expect(cfg.auth_enabled).toBe(true)
+  })
+
+  it('turns auth on for a config row written before the migration', () => {
+    // Simulate a pre-migration row, then re-run migrations over it.
+    db.exec(`
+      INSERT INTO gateway_config (id, host, port, auth_enabled, startup_enabled)
+      VALUES (1, '127.0.0.1', 8317, 0, 0)
+      ON CONFLICT(id) DO UPDATE SET auth_enabled = 0;
+      DELETE FROM schema_migrations WHERE version = 6;
+    `)
+    migrate(db)
+    expect(repo.get().auth_enabled).toBe(true)
   })
 
   it('saves and reads back the single config row', () => {

@@ -27,7 +27,7 @@ export class GatewayConfigRepository {
           id: 1,
           host: '127.0.0.1',
           port: 8317,
-          auth_enabled: false,
+          auth_enabled: true,
           startup_enabled: false
         }
   }

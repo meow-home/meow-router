@@ -154,6 +154,17 @@ export const MIGRATIONS: Migration[] = [
         ALTER TABLE model ADD COLUMN stale INTEGER NOT NULL DEFAULT 0;
       `)
     }
+  },
+  {
+    version: 6,
+    name: 'gateway_auth_default',
+    up: (db) => {
+      // The gateway now authenticates by default, including for installs that
+      // predate the key. Clients must be given the key from the Gateway view.
+      db.exec(`
+        UPDATE gateway_config SET auth_enabled = 1;
+      `)
+    }
   }
 ]
 
