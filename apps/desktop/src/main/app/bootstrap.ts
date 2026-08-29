@@ -77,6 +77,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   registry.register(createOpenAICompatibleAdapter('openai'))
   registry.register(createOpenAICompatibleAdapter('openrouter'))
   registry.register(createOpenAICompatibleAdapter('groq'))
+  registry.register(createOpenAICompatibleAdapter('opencode'))
   registry.register(createDeepSeekAdapter('deepseek'))
   registry.register(createOpenAICompatibleAdapter('openai-compatible'))
 

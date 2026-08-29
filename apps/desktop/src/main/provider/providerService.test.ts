@@ -163,6 +163,15 @@ describe('ProviderService', () => {
     expect(types.find((t) => t.id === 'openrouter')?.defaultBaseUrl).toBe('https://openrouter.ai/api/v1')
   })
 
+  it('providerTypes describes opencode Zen', () => {
+    registry.ids.mockReturnValue(['opencode'])
+    const types = service.providerTypes()
+    expect(types).toHaveLength(1)
+    expect(types[0].displayName).toBe('opencode Zen')
+    expect(types[0].defaultBaseUrl).toBe('https://opencode.ai/zen/v1')
+    expect(types[0].authType).toBe('bearer')
+  })
+
   describe('createModel', () => {
     const newModel = {
       provider_id: 'p1',

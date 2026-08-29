@@ -33,6 +33,7 @@ const KNOWN_METADATA: Record<string, ProviderTypeDescriptor> = {
   [openaiCompatibleMetadata.id]: { id: openaiCompatibleMetadata.id, displayName: openaiCompatibleMetadata.displayName, defaultBaseUrl: openaiCompatibleMetadata.defaultBaseUrl, authType: openaiCompatibleMetadata.authType },
   deepseek: { id: deepseekMetadata.id, displayName: deepseekMetadata.displayName, defaultBaseUrl: deepseekMetadata.defaultBaseUrl, authType: deepseekMetadata.authType },
   openrouter: { id: 'openrouter', displayName: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', authType: 'bearer' },
+  opencode: { id: 'opencode', displayName: 'opencode Zen', defaultBaseUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' },
   groq: { id: 'groq', displayName: 'Groq', defaultBaseUrl: 'https://api.groq.com/openai/v1', authType: 'bearer' },
   ollama: { id: 'ollama', displayName: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434/v1', authType: 'bearer' },
   lmstudio: { id: 'lmstudio', displayName: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234/v1', authType: 'bearer' }

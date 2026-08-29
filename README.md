@@ -20,8 +20,9 @@ The primary consumer is a coding agent such as Meow Coding, OpenCode, Claude Cod
 ## Providers
 
 OpenAI-compatible providers can be added by choosing a provider type and typing
-a base URL. Presets include OpenAI, OpenRouter and Groq (remote endpoints);
-DeepSeek and a generic "OpenAI-compatible" type are also available.
+a base URL. Presets include OpenAI, OpenRouter, Groq and opencode Zen
+(`https://opencode.ai/zen/v1`) as remote endpoints; DeepSeek and a generic
+"OpenAI-compatible" type are also available.
 
 Ollama and LM Studio are NOT currently available as selectable providers: their
 loopback endpoints (`http://127.0.0.1:11434/v1`, `http://127.0.0.1:1234/v1`) are
