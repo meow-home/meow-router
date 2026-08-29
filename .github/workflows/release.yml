@@ -108,12 +108,31 @@ jobs:
         shell: bash
         run: echo "Release artifacts are in apps/desktop/dist"
 
+      # Only upload real distribution artifacts, never the unpacked Electron /
+      # Chromium runtime binaries (e.g. win-unpacked/linux-unpacked/mac, which
+      # contain chrome_crashpad_handler, *.pak, *.dll, *.bin, ...). We match only
+      # files directly in dist with the expected extension. Unmatched patterns on
+      # a given OS are silently skipped by upload-artifact, and each OS always
+      # produces at least a latest*.yml manifest, so if-no-files-found never
+      # triggers.
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}-artifacts
           path: |
-            apps/desktop/dist/**/*
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/*.msi
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.dmg.blockmap
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.AppImage.blockmap
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.rpm
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.tar.gz
+            apps/desktop/dist/*.tar.bz2
+            apps/desktop/dist/latest*.yml
           if-no-files-found: error
 
   publish:
@@ -155,9 +174,22 @@ jobs:
       # Use the gh CLI (preinstalled on GitHub runners) instead of
       # softprops/action-gh-release@v2: that action is unreliable when re-running
       # against a release that already exists (it calls the delete-asset API and
-      # 404s/NPEs). This step is idempotent: on a fresh tag it creates the
-      # release, and on a re-run it uploads/overwrites the assets onto the
-      # existing release. We never delete the release or its tag.
+      # 404s/NPEs). This step is idempotent across re-runs:
+      #   * Fresh tag  -> no release exists, so we create one (WITHOUT assets),
+      #     then upload the assets.
+      #   * Existing tag -> `gh release view` finds it (non-zero != exists), so we
+      #     reuse that release and just re-upload assets.
+      #   * Assets already on the release -> `--clobber` overwrites them in place,
+      #     so we never create a duplicate release or a duplicate asset, and we
+      #     never delete the release or its tag.
+      #
+      # We check existence with `gh release view` (requirement: "check the current
+      # release by tag") instead of parsing the "already exists" text out of a
+      # failing `gh release create`. This is resilient to ambiguous error strings
+      # and to draft releases whose tag association was lost, which previously
+      # surfaced as the confusing "release not found" even though the release
+      # existed. Creating WITHOUT assets first means a naming collision
+      # ("ReleaseAsset.name already exists") can never abort the create.
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -171,23 +203,20 @@ jobs:
             args+=("$f")
           done
 
-          # Try to create the release first. If it already exists (or an asset
-          # name collides with an asset left behind by an earlier run), gh
-          # returns "HTTP 422: Validation Failed / ReleaseAsset.name already
-          # exists". In that case fall back to uploading with --clobber, which
-          # overwrites any pre-existing asset with the same name. This makes the
-          # step idempotent across re-runs without relying on `gh release view`
-          # (which is unreliable for draft releases or releases that lost their
-          # tag). We never delete the release or its tag.
-          if gh release create "$TAG" \
-              --title "Meow Gateway v${version}" \
-              --generate-notes \
-              "${args[@]}" 2>/tmp/release-create.err; then
-            echo "Release $TAG created with assets."
+          # 1) Ensure the release exists; create it (WITHOUT assets) only if the
+          #    tag has no release yet. Already-existing is NOT an error.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; reusing it."
           else
-            echo "Release $TAG could not be created (likely already exists); uploading/overwriting assets."
-            if grep -q "already exists" /tmp/release-create.err; then
-              cat /tmp/release-create.err >&2
-            fi
-            gh release upload "$TAG" "${args[@]}" --clobber
+            echo "Release $TAG not found; creating it."
+            gh release create "$TAG" \
+                --title "Meow Gateway v${version}" \
+                --generate-notes
           fi
+
+          # 2) Upload/overwrite the assets. --clobber makes this idempotent: any
+          #    asset with the same name (left behind by an earlier run) is
+          #    overwritten rather than rejected with "ReleaseAsset.name already
+          #    exists".
+          gh release upload "$TAG" "${args[@]}" --clobber
+          echo "Assets for $TAG uploaded/overwritten."
