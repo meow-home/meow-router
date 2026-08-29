@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ModelsView } from './ModelsView'
 
@@ -9,6 +9,7 @@ describe('ModelsView', () => {
     vi.clearAllMocks()
     gw.listProviders.mockResolvedValue([{ id: 'p1', type: 'deepseek', display_name: 'DeepSeek', enabled: true, base_url: '', hasCredential: true, created_at: '', updated_at: '' }])
     gw.listModelsByProvider.mockResolvedValue([{ id: 'm1', provider_id: 'p1', provider_model_id: 'deepseek-chat', display_name: 'DeepSeek Chat', context_window: 64000, input_price: 0.1, output_price: 0.3, capabilities_json: '{}', enabled: true, discovered_at: '', stale: false }])
+    gw.deleteModel.mockResolvedValue(true)
   })
 
   it('renders models for selected provider', async () => {
@@ -54,5 +55,15 @@ describe('ModelsView', () => {
     fireEvent.click(await screen.findByText(/Save Model/i))
     await waitFor(() => expect(gw.updateModel).toHaveBeenCalledWith('m1', expect.objectContaining({ provider_model_id: 'deepseek-chat-v2' })))
     expect(gw.updateModel.mock.calls[0][1]).not.toHaveProperty('provider_id')
+  })
+
+  it('requires confirmation before deleting a model', async () => {
+    render(<ModelsView />)
+    fireEvent.click(await screen.findByText('Del'))
+    expect(gw.deleteModel).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('dialog', { name: /Delete model/i })
+    expect(dialog.textContent).toContain('Delete "DeepSeek Chat"')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Delete$/i }))
+    await waitFor(() => expect(gw.deleteModel).toHaveBeenCalledWith('m1'))
   })
 })

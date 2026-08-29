@@ -16,6 +16,7 @@ export type { DashboardTotals, UsagePage } from '../main/database/repositories/u
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
 
 export interface WindowApi {
+  getAppVersion(): Promise<string>
   listProviders(): Promise<ProviderWithCredential[]>
   createProvider(input: NewProviderInput): Promise<ProviderRow>
   updateProvider(id: string, patch: Partial<Omit<ProviderRow, 'id' | 'created_at'>>): Promise<ProviderRow>
@@ -50,6 +51,7 @@ export interface WindowApi {
 
 export const IPC_CHANNELS = {
   ping: 'app:ping',
+  getAppVersion: 'app:get-version',
   provider: {
     list: 'provider:list',
     create: 'provider:create',

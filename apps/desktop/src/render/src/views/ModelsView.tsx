@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
-import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner } from '../components/ui'
+import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -164,6 +164,7 @@ export function ModelsView() {
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<ModelRow | null>(null)
 
   const refresh = async (pid: string) => {
     if (!pid) { setModels([]); return }
@@ -188,9 +189,16 @@ export function ModelsView() {
     await refresh(providerId)
   }
 
-  async function handleDelete(m: ModelRow) {
-    await window.meowGateway.deleteModel(m.id)
-    await refresh(providerId)
+  async function handleConfirmDelete() {
+    if (!deleting) return
+    try {
+      await window.meowGateway.deleteModel(deleting.id)
+      setDeleting(null)
+      await refresh(providerId)
+    } catch (e) {
+      setError(String(e))
+      setDeleting(null)
+    }
   }
 
   function handleAdd() {
@@ -298,7 +306,7 @@ export function ModelsView() {
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                       <Button onClick={() => handleEdit(m)}>Edit</Button>
                       <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
-                      <Button variant="danger" onClick={() => handleDelete(m)}>Del</Button>
+                      <Button variant="danger" onClick={() => setDeleting(m)}>Del</Button>
                     </div>
                   </td>
                 </tr>
@@ -307,6 +315,16 @@ export function ModelsView() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete model"
+        message={`Delete "${deleting?.display_name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   )
 }

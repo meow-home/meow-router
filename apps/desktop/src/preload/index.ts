@@ -38,6 +38,7 @@ const api: WindowApi = {
     const payload: PingPayload = { from: 'preload' }
     return ipcRenderer.invoke(IPC_CHANNELS.ping, payload) as Promise<PingResult>
   },
+  getAppVersion: () => invoke<string>(IPC_CHANNELS.getAppVersion),
   listProviders: () => invoke<ProviderWithCredential[]>(IPC_CHANNELS.provider.list),
   createProvider: (input: NewProviderInput) => invoke<ProviderRow>(IPC_CHANNELS.provider.create, input),
   updateProvider: (id, patch) => invoke<ProviderRow>(IPC_CHANNELS.provider.update, id, patch),

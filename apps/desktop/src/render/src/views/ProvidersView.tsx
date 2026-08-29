@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, ProviderTypeDescriptor } from '@shared/ipc'
-import { ViewHeader, Button, Pill, ErrorBanner, EmptyState, Modal, classNames } from '../components/ui'
+import { ViewHeader, Button, Pill, ErrorBanner, EmptyState, Modal, ConfirmDialog, classNames } from '../components/ui'
 import { AddProviderModal } from '../components/AddProviderModal'
 import { EditProviderModal } from '../components/EditProviderModal'
 
@@ -9,6 +9,7 @@ export function ProvidersView() {
   const [types, setTypes] = useState<ProviderTypeDescriptor[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<ProviderWithCredential | null>(null)
+  const [deleting, setDeleting] = useState<ProviderWithCredential | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -27,9 +28,16 @@ export function ProvidersView() {
     await refresh()
   }
 
-  async function handleDelete(p: ProviderWithCredential) {
-    await window.meowGateway.deleteProvider(p.id)
-    await refresh()
+  async function handleConfirmDelete() {
+    if (!deleting) return
+    try {
+      await window.meowGateway.deleteProvider(deleting.id)
+      setDeleting(null)
+      await refresh()
+    } catch (e) {
+      setError(String(e))
+      setDeleting(null)
+    }
   }
 
   async function handleTest(p: ProviderWithCredential) {
@@ -80,7 +88,7 @@ export function ProvidersView() {
                 <Button onClick={() => handleToggle(p)}>{p.enabled ? 'Disable' : 'Enable'}</Button>
                 <Button onClick={() => handleTest(p)}>Test</Button>
                 <Button onClick={() => handleDiscover(p)}>Sync Models</Button>
-                <Button variant="danger" onClick={() => handleDelete(p)}>Delete</Button>
+                <Button variant="danger" onClick={() => setDeleting(p)}>Delete</Button>
               </div>
             </div>
           </div>
@@ -109,6 +117,16 @@ export function ProvidersView() {
       <Modal open={notice != null} title="Provider" onClose={() => setNotice(null)}>
         <p className="dialog-message mono">{notice}</p>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete provider"
+        message={`Delete "${deleting?.display_name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   )
 }

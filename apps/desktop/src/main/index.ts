@@ -65,6 +65,10 @@ app.whenReady().then(async () => {
     return { pong: 'pong', echo: payload.from }
   })
 
+  ipcMain.handle(IPC_CHANNELS.getAppVersion, (): string => {
+    return app.getVersion()
+  })
+
   // Remove the native File/Edit/View... menu bar; the app is a self-contained
   // workspace with its own in-app navigation.
   Menu.setApplicationMenu(null)

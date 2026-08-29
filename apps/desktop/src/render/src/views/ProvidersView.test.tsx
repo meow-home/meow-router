@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ProvidersView } from './ProvidersView'
 
@@ -11,6 +11,7 @@ describe('ProvidersView', () => {
       { id: 'p1', type: 'deepseek', display_name: 'DeepSeek', enabled: true, base_url: 'https://api.deepseek.com/v1', hasCredential: true, created_at: '', updated_at: '' }
     ])
     gw.listProviderTypes.mockResolvedValue([{ id: 'deepseek', displayName: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com/v1', authType: 'bearer' }])
+    gw.deleteProvider.mockResolvedValue(true)
   })
 
   it('renders providers with hasCredential badge', async () => {
@@ -64,5 +65,15 @@ describe('ProvidersView', () => {
     await screen.findByRole('dialog')
     fireEvent.click(screen.getByText('Save Provider'))
     await waitFor(() => expect(gw.updateProvider).toHaveBeenCalledWith('p1', { display_name: 'DeepSeek', base_url: null, enabled: true }))
+  })
+
+  it('requires confirmation before deleting a provider', async () => {
+    render(<ProvidersView />)
+    fireEvent.click(await screen.findByText('Delete'))
+    expect(gw.deleteProvider).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('dialog', { name: /Delete provider/i })
+    expect(dialog.textContent).toContain('Delete "DeepSeek"')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Delete$/i }))
+    await waitFor(() => expect(gw.deleteProvider).toHaveBeenCalledWith('p1'))
   })
 })

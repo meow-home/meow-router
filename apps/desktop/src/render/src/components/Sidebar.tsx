@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import logo from '../assets/logo.png'
 import { Pill } from './ui'
 
@@ -20,6 +21,12 @@ export function Sidebar({
   onSelect: (v: View) => void
   running: boolean
 }) {
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    window.meowGateway.getAppVersion().then(setVersion).catch(() => setVersion(''))
+  }, [])
+
   return (
     <aside className="rail">
       <div className="rail__brand">
@@ -50,6 +57,7 @@ export function Sidebar({
         </div>
         <span>endpoint 127.0.0.1</span>
         <span style={{ color: 'var(--text-faint)' }}>port 8317 / v1</span>
+        <span style={{ color: 'var(--text-faint)' }}>v{version || '0.1.0'}</span>
       </div>
     </aside>
   )
