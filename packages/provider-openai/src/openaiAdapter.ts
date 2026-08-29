@@ -141,7 +141,8 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
       messages: request.messages.map((m) => ({
         role: m.role,
         content: m.content,
-        ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {})
+        ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
+        ...(m.toolCalls ? { tool_calls: m.toolCalls } : {})
       })),
       stream: request.stream ?? false,
       ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),

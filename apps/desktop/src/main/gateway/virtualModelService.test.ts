@@ -59,6 +59,28 @@ describe('VirtualModelService', () => {
     expect(resolved!.baseUrl).toBe('https://opencode.ai/zen/go/v1')
   })
 
+  it("carries the provider TYPE as the adapter registry key when the provider id is a UUID", async () => {
+    // Real providers store a UUID as provider.id; the adapter registry is keyed
+    // by type ('deepseek'), so the route must expose the type separately from
+    // the UUID or the gateway fails with INTERNAL_ERROR.
+    const providerRepo = new ProviderRepository(db)
+    providerRepo.create({ id: 'cbdad16d-0beb-4f60-aa10-bdbbf22e8929', type: 'deepseek', display_name: 'DeepSeek' })
+    new ModelRepository(db).create({
+      provider_id: 'cbdad16d-0beb-4f60-aa10-bdbbf22e8929',
+      provider_model_id: 'deepseek-chat',
+      display_name: 'DeepSeek Chat'
+    })
+    repo.create({
+      display_name: 'meo-ds-01',
+      provider_id: 'cbdad16d-0beb-4f60-aa10-bdbbf22e8929',
+      provider_model_id: 'deepseek-chat'
+    })
+    const withProviders = new VirtualModelService(repo, null, providerRepo)
+    const resolved = await withProviders.resolveModel('meo-ds-01')
+    expect(resolved!.providerId).toBe('cbdad16d-0beb-4f60-aa10-bdbbf22e8929')
+    expect(resolved!.adapterId).toBe('deepseek')
+  })
+
   it('leaves the base URL unset when the provider has none', async () => {
     const providerRepo = new ProviderRepository(db)
     repo.create({ display_name: 'plain', provider_id: 'deepseek', provider_model_id: 'deepseek-chat' })

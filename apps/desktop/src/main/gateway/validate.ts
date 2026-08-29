@@ -9,7 +9,7 @@ import { ProviderError } from '@meow-gateway/provider-core'
 
 export interface ChatCompletionsBody {
   model: string
-  messages: Array<{ role: string; content: unknown; tool_call_id?: string }>
+  messages: Array<{ role: string; content: unknown; tool_call_id?: string; tool_calls?: unknown[] }>
   temperature?: number
   topP?: number
   maxTokens?: number

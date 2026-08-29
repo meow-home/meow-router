@@ -97,6 +97,32 @@ describe('OpenAICompatibleAdapter', () => {
     }
   })
 
+  it('forwards assistant tool_calls in the request body', async () => {
+    // A tool-use conversation re-sends the assistant tool-call request; the
+    // body must keep tool_calls or the upstream rejects the assistant message.
+    let sentBody: { messages?: Array<{ role?: string; content?: unknown; tool_calls?: unknown[]; tool_call_id?: string }> }
+    const fetcher: Fetcher = async (_url, init) => {
+      sentBody = JSON.parse(init?.body ?? '{}')
+      return jsonResponse(200, { choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] })
+    }
+    const adapter = createOpenAICompatibleAdapter('openai', fetcher)
+    const toolCalls = [{ id: 'call_abc', type: 'function', function: { name: 'get_weather', arguments: '{}' } }]
+    const chunks: NormalizedChatChunk[] = []
+    for await (const c of adapter.chat(ctx(), {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'user', content: 'What is the weather?' },
+        { role: 'assistant', content: null, toolCalls },
+        { role: 'tool', content: 'sunny', toolCallId: 'call_abc' }
+      ]
+    })) {
+      chunks.push(c)
+    }
+    expect(sentBody!.messages![1].role).toBe('assistant')
+    expect(sentBody!.messages![1].tool_calls).toEqual(toolCalls)
+    expect(sentBody!.messages![2].tool_call_id).toBe('call_abc')
+  })
+
   it('non-streaming returns full content then finish', async () => {
     const fetcher: Fetcher = async () =>
       jsonResponse(200, {

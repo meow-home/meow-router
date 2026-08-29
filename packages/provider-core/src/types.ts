@@ -49,6 +49,10 @@ export interface NormalizedMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: unknown
   toolCallId?: string
+  // Assistant tool-call requests. Carried verbatim so a tool-use conversation
+  // history survives normalization; dropping them leaves an assistant message
+  // with empty content and the upstream provider rejects it.
+  toolCalls?: unknown[]
 }
 
 export interface NormalizedChatChunk {

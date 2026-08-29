@@ -32,19 +32,32 @@ export class VirtualModelService {
     private readonly providers: ProviderRepository | null = null
   ) {}
 
-  private baseUrlFor(providerId: string): string | undefined {
-    return this.providers?.findById(providerId)?.base_url ?? undefined
+  // Build one route for a provider+model, carrying the provider's configured
+  // base URL and its TYPE as the adapter registry key. The provider row is
+  // keyed by a UUID id; the adapter registry is keyed by type ('deepseek').
+  // Without adapterId the gateway would try registry.require(<uuid>) and fail
+  // with INTERNAL_ERROR on every chat request.
+  private routeFor(providerId: string, providerModelId: string): RouteCandidate {
+    const provider = this.providers?.findById(providerId)
+    const baseUrl = provider?.base_url ?? undefined
+    return {
+      providerId,
+      providerModelId,
+      ...(provider?.type ? { adapterId: provider.type } : {}),
+      ...(baseUrl ? { baseUrl } : {})
+    }
   }
 
   async resolveModel(id: string): Promise<ResolvedModel | null> {
     // Accept either the virtual model display name or its internal id.
     const vm = this.repo.findByDisplayName(id) ?? this.repo.findById(id)
     if (!vm || !vm.enabled) return null
-    const baseUrl = this.baseUrlFor(vm.provider_id)
+    const route = this.routeFor(vm.provider_id, vm.provider_model_id)
     return {
-      providerId: vm.provider_id,
-      providerModelId: vm.provider_model_id,
-      ...(baseUrl ? { baseUrl } : {}),
+      providerId: route.providerId,
+      providerModelId: route.providerModelId,
+      ...(route.adapterId ? { adapterId: route.adapterId } : {}),
+      ...(route.baseUrl ? { baseUrl: route.baseUrl } : {}),
       model: toModelInfo(vm)
     }
   }
@@ -57,7 +70,7 @@ export class VirtualModelService {
     const vm = this.repo.findByDisplayName(id) ?? this.repo.findById(id)
     if (!vm || !vm.enabled) return { routes: [], usedFallback: false }
 
-    const routes: RouteCandidate[] = [{ providerId: vm.provider_id, providerModelId: vm.provider_model_id }]
+    const routes: RouteCandidate[] = [this.routeFor(vm.provider_id, vm.provider_model_id)]
     const seen = new Set<string>([vm.provider_id])
 
     if (vm.routing_policy_id && this.routingPolicies) {
@@ -66,7 +79,7 @@ export class VirtualModelService {
         if (seen.has(c.providerId)) continue // loop prevention
         if (routes.length >= MAX_ROUTES) break
         seen.add(c.providerId)
-        routes.push({ providerId: c.providerId, providerModelId: c.providerModelId })
+        routes.push(this.routeFor(c.providerId, c.providerModelId))
       }
     }
 

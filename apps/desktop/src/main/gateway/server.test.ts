@@ -871,6 +871,100 @@ describe('provider credential resolution', () => {
   })
 })
 
+describe('provider adapter resolution with a UUID provider id', () => {
+  // The real DB stores a UUID as provider.id, and virtual_model.provider_id
+  // points at that UUID (see ProviderRepository.create -> randomUUID). The
+  // gateway must resolve the provider adapter by the provider's TYPE, not by
+  // that UUID — the registry is keyed by type/adapter id ('deepseek', 'opencode').
+  it('routes chat to the adapter for the provider type, not the raw UUID', async () => {
+    const db = await openDatabase(':memory:')
+    try {
+      const providerRepo = new ProviderRepository(db)
+      const vmRepo = new VirtualModelRepository(db)
+      const modelRepo = new ModelRepository(db)
+      const providerId = 'cbdad16d-0beb-4f60-aa10-bdbbf22e8929'
+      providerRepo.create({ id: providerId, type: 'deepseek', display_name: 'DeepSeek' })
+      modelRepo.create({ provider_id: providerId, provider_model_id: 'deepseek-chat', display_name: 'DeepSeek Chat' })
+      vmRepo.create({ display_name: 'meo-ds-01', provider_id: providerId, provider_model_id: 'deepseek-chat' })
+      const service = new VirtualModelService(vmRepo, null, providerRepo)
+
+      const registry = new ProviderRegistry()
+      registry.register(makeFakeAdapter('deepseek'))
+
+      const server = createGatewayServer(
+        {
+          registry,
+          getCredential: async () => 'sk-test',
+          resolveModel: (id) => service.resolveModel(id),
+          listModels: () => service.listModels(),
+          recordUsage: async () => {}
+        },
+        { host: DEFAULT_HOST, port: 0 }
+      )
+      const addr = await server.start()
+      try {
+        const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ model: 'meo-ds-01', messages: [{ role: 'user', content: 'hi' }] })
+        })
+        // A raw Error from registry.require(uuid) surfaces as INTERNAL_ERROR.
+        // A successful chat proves the adapter was found by provider type.
+        expect(body.error?.code).toBeUndefined()
+        expect(status).toBe(200)
+        expect(body.choices[0].message.content).toContain('Hello from deepseek')
+      } finally {
+        await server.stop()
+      }
+    } finally {
+      closeDatabase(db)
+    }
+  })
+})
+
+describe('assistant tool_calls forwarding', () => {
+  it('keeps assistant tool_calls intact across the gateway', async () => {
+    // A tool-use conversation includes assistant messages that carry tool_calls
+    // and no content. If the gateway drops tool_calls, the upstream provider
+    // rejects with "content or tool_calls must be set".
+    const seen: Array<NormalizedChatRequest['messages']> = []
+    const registry = new ProviderRegistry()
+    registry.register({
+      id: 'openai',
+      async getModels() { return [] },
+      async validateCredentials() { return { ok: true, message: 'ok' } },
+      async *chat(_ctx: unknown, req: NormalizedChatRequest) {
+        seen.push(req.messages)
+        yield { id: 'c1', kind: 'content_delta', delta: 'ok' }
+        yield { id: 'c1', kind: 'finish', finishReason: 'stop' }
+      }
+    } as unknown as ProviderAdapter)
+
+    const harness = makeHarness()
+    const { server, addr } = await startServer({ ...harness.deps, registry })
+    const toolCalls = [{ id: 'call_abc', type: 'function', function: { name: 'get_weather', arguments: '{}' } }]
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'user', content: 'What is the weather?' },
+            { role: 'assistant', content: null, tool_calls: toolCalls },
+            { role: 'tool', tool_call_id: 'call_abc', content: 'sunny' }
+          ]
+        })
+      })
+      expect(status).toBe(200)
+      const assistant = seen[0]?.find((m) => m.role === 'assistant')
+      expect(assistant?.toolCalls).toEqual(toolCalls)
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
 describe('provider base URL routing', () => {
   it('hands the adapter the base URL the provider was configured with', async () => {
     // Without this the OpenAI-compatible adapter falls back to its DEFAULT_BASE_URL,

@@ -14,6 +14,12 @@ export interface ResolvedModel {
   // The provider's configured endpoint. Without it the adapter falls back to
   // its own default and a request meant for one vendor is sent to another.
   baseUrl?: string
+  // Registry key of the provider adapter, normally the provider's `type`
+  // (e.g. 'deepseek'). Distinct from providerId, which is the DB UUID that
+  // keys the credential ref and model-pricing lookups. The adapter registry is
+  // keyed by type, so looking it up by the UUID throws and surfaces as
+  // INTERNAL_ERROR.
+  adapterId?: string
   model: ModelInfo
 }
 
@@ -38,6 +44,9 @@ export interface RouteCandidate {
   providerId: string
   providerModelId: string
   baseUrl?: string
+  // Registry key of the provider adapter (the provider's `type`). See
+  // ResolvedModel.adapterId — providerId is the DB UUID, not the registry key.
+  adapterId?: string
 }
 
 // An ordered list of routes (primary first). Loop prevented by the resolver.

@@ -152,7 +152,8 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       messages: body.messages.map((m) => ({
         role: m.role as NormalizedChatRequest['messages'][number]['role'],
         content: m.content,
-        ...(m.tool_call_id ? { toolCallId: m.tool_call_id } : {})
+        ...(m.tool_call_id ? { toolCallId: m.tool_call_id } : {}),
+        ...(m.tool_calls ? { toolCalls: m.tool_calls } : {})
       })),
       stream: body.stream ?? false,
       ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
@@ -199,7 +200,10 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
         retryable: false
       })
     }
-    const adapter = deps.registry.require(route.providerId)
+    // providerId is the DB UUID (virtual_model.provider_id); the adapter
+    // registry is keyed by provider TYPE. Fall back to providerId only so
+    // callers that key providers by type (e.g. tests) keep working.
+    const adapter = deps.registry.require(route.adapterId ?? route.providerId)
     const ctx: ProviderContext = {
       credentialRef: refFor(route.providerId),
       credential,
@@ -495,11 +499,13 @@ function primaryRoute(resolved: {
   providerId: string
   providerModelId: string
   baseUrl?: string
+  adapterId?: string
 }): RouteCandidate {
   return {
     providerId: resolved.providerId,
     providerModelId: resolved.providerModelId,
-    ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {})
+    ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
+    ...(resolved.adapterId ? { adapterId: resolved.adapterId } : {})
   }
 }
 
