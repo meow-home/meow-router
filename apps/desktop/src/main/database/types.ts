@@ -110,11 +110,42 @@ export interface RequestUsageRow {
   latency_ms: number
   status: string
   error_code: string | null
+  route_attempt: number
   created_at: string
 }
 
-export type NewRequestUsage = Omit<RequestUsageRow, 'id' | 'created_at' | 'estimated_cost'> & {
+export type NewRequestUsage = Omit<RequestUsageRow, 'id' | 'created_at' | 'estimated_cost' | 'route_attempt'> & {
   id?: string
   created_at?: string
   estimated_cost?: number | null
+  route_attempt?: number
+}
+
+export type RoutingStrategy = 'sequential' | 'priority'
+
+export interface RoutingPolicyRow {
+  id: string
+  name: string
+  strategy: RoutingStrategy
+  config_json: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Parsed shape of an ordered candidate list for sequential/priority routing.
+export interface RoutingCandidate {
+  providerId: string
+  providerModelId: string
+  weight?: number
+}
+
+export interface SequentialRoutingConfig {
+  candidates: RoutingCandidate[]
+}
+
+export type NewRoutingPolicy = {
+  id?: string
+  name: string
+  strategy?: RoutingStrategy
+  config_json?: string | null
 }

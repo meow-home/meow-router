@@ -123,6 +123,28 @@ export const MIGRATIONS: Migration[] = [
           ON request_usage (created_at);
       `)
     }
+  },
+  {
+    version: 4,
+    name: 'routing_policy',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS routing_policy (
+          id          TEXT PRIMARY KEY,
+          name        TEXT NOT NULL,
+          strategy    TEXT NOT NULL,
+          config_json TEXT,
+          created_at  TEXT NOT NULL,
+          updated_at  TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_routing_policy_name
+          ON routing_policy (name);
+
+        -- Route attempt ordinal so each billing record is attributable.
+        ALTER TABLE request_usage ADD COLUMN route_attempt INTEGER NOT NULL DEFAULT 0;
+      `)
+    }
   }
 ]
 

@@ -1,15 +1,19 @@
 // Binds the virtual-model repository to the gateway's model-resolution contract.
 //
-// The gateway server only knows about resolveModel(id) -> ResolvedModel and
-// listModels() -> OpenAI model descriptors. This adapter reads the DB repository
-// to answer both, keeping the gateway provider-neutral and the renderer unaware
-// of how models map to providers.
+// The gateway server only knows about resolveModel(id) -> ResolvedModel,
+// resolveRoutes(id) -> ordered routes, and listModels() -> OpenAI descriptors.
+// This adapter reads the DB repository to answer all three, keeping the gateway
+// provider-neutral and the renderer unaware of how models map to providers.
 
 import type { VirtualModelRepository } from '../database/repositories/virtualModelRepository'
-import type { ResolvedModel } from './types'
+import type { RoutingPolicyRepository } from '../database/repositories/routingPolicyRepository'
+import type { ResolvedModel, RouteCandidate, RouteList } from './types'
 import type { ModelInfo } from '@meow-gateway/provider-core'
 
-function toModelInfo(vm: { provider_model_id: string }): ModelInfo {
+// Hard cap on fallback attempts to guarantee termination (loop prevention).
+export const MAX_ROUTES = 8
+
+function toModelInfo(vm: { provider_model_id: string; provider_id: string }): ModelInfo {
   return {
     id: vm.provider_model_id,
     providerModelId: vm.provider_model_id,
@@ -19,7 +23,10 @@ function toModelInfo(vm: { provider_model_id: string }): ModelInfo {
 }
 
 export class VirtualModelService {
-  constructor(private readonly repo: VirtualModelRepository) {}
+  constructor(
+    private readonly repo: VirtualModelRepository,
+    private readonly routingPolicies: RoutingPolicyRepository | null = null
+  ) {}
 
   async resolveModel(id: string): Promise<ResolvedModel | null> {
     // Accept either the virtual model display name or its internal id.
@@ -30,6 +37,30 @@ export class VirtualModelService {
       providerModelId: vm.provider_model_id,
       model: toModelInfo(vm)
     }
+  }
+
+  // Resolve an ordered list of candidate routes for a virtual model.
+  // Primary route is the virtual model's own mapping; fallback candidates come
+  // from the attached routing policy (if any). Loop prevention: dedupe by
+  // provider and cap the number of routes.
+  async resolveRoutes(id: string): Promise<RouteList> {
+    const vm = this.repo.findByDisplayName(id) ?? this.repo.findById(id)
+    if (!vm || !vm.enabled) return { routes: [], usedFallback: false }
+
+    const routes: RouteCandidate[] = [{ providerId: vm.provider_id, providerModelId: vm.provider_model_id }]
+    const seen = new Set<string>([vm.provider_id])
+
+    if (vm.routing_policy_id && this.routingPolicies) {
+      const candidates = this.routingPolicies.candidates(vm.routing_policy_id)
+      for (const c of candidates) {
+        if (seen.has(c.providerId)) continue // loop prevention
+        if (routes.length >= MAX_ROUTES) break
+        seen.add(c.providerId)
+        routes.push({ providerId: c.providerId, providerModelId: c.providerModelId })
+      }
+    }
+
+    return { routes, usedFallback: routes.length > 1 }
   }
 
   async listModels(): Promise<Array<{ id: string; object: string; owned_by: string }>> {

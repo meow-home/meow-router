@@ -16,7 +16,7 @@ import { ProviderRepository, ModelRepository, VirtualModelRepository, UsageRepos
 import { VirtualModelService } from './virtualModelService'
 import { UsageService } from './usageService'
 
-function makeFakeAdapter(id: string, opts?: { fail?: boolean }): ProviderAdapter {
+function makeFakeAdapter(id: string, opts?: { fail?: boolean; retryableFail?: boolean }): ProviderAdapter {
   return {
     id,
     async getModels() {
@@ -35,6 +35,9 @@ function makeFakeAdapter(id: string, opts?: { fail?: boolean }): ProviderAdapter
     async *chat(_ctx: unknown, _request: NormalizedChatRequest) {
       if (opts?.fail) {
         throw new ProviderError({ type: 'AUTH_ERROR', message: 'Provider rejected credentials', retryable: false })
+      }
+      if (opts?.retryableFail) {
+        throw new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Provider temporarily down', retryable: true })
       }
       const text = 'Hello from ' + id
       for (const word of text.split(' ')) {
@@ -590,5 +593,145 @@ describe('usage recording integration (T501)', () => {
     } finally {
       await server.stop()
     }
+  })
+})
+
+describe('routing & fallback (T701)', () => {
+  // Build a deps with an ordered route list and per-attempt usage capture.
+  function makeRoutingDeps(opts: {
+    primary?: { fail?: boolean; retryableFail?: boolean }
+    fallback?: { fail?: boolean; retryableFail?: boolean }
+    routes?: Array<{ providerId: string; providerModelId: string }>
+  }) {
+    const registry = new ProviderRegistry()
+    const primary = opts.primary ?? {}
+    const fallback = opts.fallback ?? {}
+    registry.register(makeFakeAdapter('openai', primary))
+    registry.register(makeFakeAdapter('deepseek', fallback))
+
+    const usages: GatewayUsage[] = []
+    const routes =
+      opts.routes ?? [
+        { providerId: 'openai', providerModelId: 'gpt-4o' },
+        { providerId: 'deepseek', providerModelId: 'deepseek-chat' }
+      ]
+
+    const deps: GatewayDependencies = {
+      registry,
+      getCredential: async () => 'sk-test',
+      resolveModel: async (id) =>
+        id === 'meow-coding'
+          ? {
+              providerId: 'openai',
+              providerModelId: 'gpt-4o',
+              model: {
+                id: 'gpt-4o',
+                providerModelId: 'gpt-4o',
+                displayName: 'GPT-4o',
+                capabilities: { streaming: true, tools: true, vision: true, reasoning: false, structuredOutput: true }
+              }
+            }
+          : null,
+      resolveRoutes: async (id) => (id === 'meow-coding' ? { routes, usedFallback: routes.length > 1 } : { routes: [], usedFallback: false }),
+      listModels: async () => [],
+      recordUsage: async (u) => {
+        usages.push(u)
+      }
+    }
+    return { registry, usages, deps }
+  }
+
+  async function withServer(deps: GatewayDependencies, fn: (addr: { host: string; port: number }) => Promise<void>) {
+    const server = createGatewayServer(deps, { host: DEFAULT_HOST, port: 0 })
+    const addr = await server.start()
+    try {
+      await fn(addr)
+    } finally {
+      await server.stop()
+    }
+  }
+
+  it('primary provider is attempted first and succeeds', async () => {
+    const { usages, deps } = makeRoutingDeps({})
+    await withServer(deps, async (addr) => {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(200)
+      expect(body.choices[0].message.content).toContain('openai')
+      // Only the primary route attempted.
+      expect(usages).toHaveLength(1)
+      expect(usages[0].providerId).toBe('openai')
+      expect(usages[0].routeAttempt).toBe(0)
+    })
+  })
+
+  it('falls back to the next route on a retryable failure', async () => {
+    const { usages, deps } = makeRoutingDeps({ primary: { retryableFail: true } })
+    await withServer(deps, async (addr) => {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(200)
+      expect(body.choices[0].message.content).toContain('deepseek')
+      // Two attempts recorded; fallback is observable via routeAttempt=1.
+      expect(usages).toHaveLength(2)
+      expect(usages[0].providerId).toBe('openai')
+      expect(usages[0].status).toBe('error')
+      expect(usages[0].routeAttempt).toBe(0)
+      expect(usages[1].providerId).toBe('deepseek')
+      expect(usages[1].status).toBe('success')
+      expect(usages[1].routeAttempt).toBe(1)
+    })
+  })
+
+  it('does NOT fall back on a non-retryable failure', async () => {
+    const { usages, deps } = makeRoutingDeps({ primary: { fail: true } })
+    await withServer(deps, async (addr) => {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(401)
+      // Only the primary attempted; no fallback.
+      expect(usages).toHaveLength(1)
+      expect(usages[0].providerId).toBe('openai')
+      expect(usages[0].status).toBe('error')
+      expect(usages[0].errorCode).toBe('AUTH_ERROR')
+    })
+  })
+
+  it('all routes failing returns an error and records each attempt', async () => {
+    const { usages, deps } = makeRoutingDeps({ primary: { retryableFail: true }, fallback: { retryableFail: true } })
+    await withServer(deps, async (addr) => {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(503)
+      expect(usages).toHaveLength(2)
+      expect(usages[0].status).toBe('error')
+      expect(usages[1].status).toBe('error')
+    })
+  })
+
+  it('non-retryable provider rejection aborts immediately even with a fallback available', async () => {
+    const { usages, deps } = makeRoutingDeps({ primary: { fail: true }, fallback: {} })
+    await withServer(deps, async (addr) => {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(401)
+      expect(usages).toHaveLength(1)
+      expect(usages[0].providerId).toBe('openai')
+    })
   })
 })

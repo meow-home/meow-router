@@ -25,8 +25,8 @@ Primary
 
 ## Acceptance criteria
 
-- [ ] primary provider is attempted first;
-- [ ] only retryable failures trigger fallback;
-- [ ] fallback attempt is observable;
-- [ ] duplicate billing is represented correctly;
-- [ ] loop prevention exists.
+- [x] primary provider is attempted first;
+- [x] only retryable failures trigger fallback;
+- [x] fallback attempt is observable;
+- [x] duplicate billing is represented correctly;
+- [x] loop prevention exists.

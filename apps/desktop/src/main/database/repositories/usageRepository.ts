@@ -29,6 +29,7 @@ function mapRow(r: RawUsage): RequestUsageRow {
     latency_ms: r.latency_ms,
     status: r.status,
     error_code: r.error_code,
+    route_attempt: r.route_attempt,
     created_at: r.created_at
   }
 }
@@ -60,19 +61,20 @@ export class UsageRepository {
       latency_ms: input.latency_ms,
       status: input.status,
       error_code: input.error_code ?? null,
+      route_attempt: input.route_attempt ?? 0,
       created_at: input.created_at ?? new Date().toISOString()
     }
     this.db
       .prepare(
         `INSERT INTO request_usage (id, request_id, virtual_model_id, provider_id,
           provider_model_id, input_tokens, output_tokens, cached_tokens, estimated_cost,
-          latency_ms, status, error_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          latency_ms, status, error_code, route_attempt, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run([
         row.id, row.request_id, row.virtual_model_id, row.provider_id, row.provider_model_id,
         row.input_tokens, row.output_tokens, row.cached_tokens, row.estimated_cost, row.latency_ms,
-        row.status, row.error_code, row.created_at
+        row.status, row.error_code, row.route_attempt, row.created_at
       ])
     this.db.save()
     return row

@@ -6,3 +6,4 @@ export { VirtualModelRepository, VirtualModelError } from './virtualModelReposit
 export type { VirtualModelValidationError } from './virtualModelRepository'
 export { UsageRepository } from './usageRepository'
 export type { DashboardTotals } from './usageRepository'
+export { RoutingPolicyRepository, RoutingPolicyError, parseRoutingConfig } from './routingPolicyRepository'

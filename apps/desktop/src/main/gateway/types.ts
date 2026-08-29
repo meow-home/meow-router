@@ -25,6 +25,20 @@ export interface GatewayUsage {
   latencyMs: number
   status: 'success' | 'error' | 'aborted'
   errorCode?: string
+  // Ordinal (0-based) of the routing candidate this record belongs to.
+  routeAttempt?: number
+}
+
+// One candidate route to attempt for a virtual model.
+export interface RouteCandidate {
+  providerId: string
+  providerModelId: string
+}
+
+// An ordered list of routes (primary first). Loop prevented by the resolver.
+export interface RouteList {
+  routes: RouteCandidate[]
+  usedFallback: boolean
 }
 
 export interface GatewayLogger {
@@ -48,6 +62,10 @@ export interface GatewayDependencies {
   // Resolve a client-visible model id to a provider + provider model. Returns
   // null when the model is unknown (-> MODEL_NOT_FOUND).
   resolveModel(model: string): Promise<ResolvedModel | null>
+  // Resolve an ordered list of candidate routes (primary first) for a virtual
+  // model id. Optional; when absent the gateway treats the model as a single
+  // primary route (no fallback).
+  resolveRoutes?(id: string): Promise<RouteList>
   // Record request usage (Phase 5). Optional; defaults to a no-op.
   recordUsage?(usage: GatewayUsage): Promise<void>
   // List client-visible models for GET /v1/models. Optional; defaults to [].

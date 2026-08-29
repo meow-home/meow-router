@@ -18,7 +18,7 @@ import {
   type ProviderContext,
   type NormalizedChatRequest
 } from '@meow-gateway/provider-core'
-import type { GatewayDependencies, GatewayUsage } from './types'
+import type { GatewayDependencies, GatewayUsage, RouteCandidate } from './types'
 import { nullLogger } from './types'
 import { toGatewayErrorBody, httpStatusFor } from './errors'
 import { parseJsonBody, validateChatCompletionsBody, createBodyReader } from './validate'
@@ -109,40 +109,22 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     const raw = await bodyReader.read(req)
     const body = validateChatCompletionsBody(parseJsonBody(raw))
 
-    // Resolve the (virtual) model.
+    // Resolve the ordered route list for the (virtual) model.
     const resolved = await deps.resolveModel(body.model)
     if (!resolved) {
       throw new ProviderError({ type: 'MODEL_NOT_FOUND', message: `Unknown model: ${body.model}`, retryable: false })
     }
 
-    // Resolve the credential (main-process only).
-    const credential = await deps.getCredential(refFor(resolved.providerId))
-    if (!credential) {
-      throw new ProviderError({
-        type: 'AUTH_ERROR',
-        message: `No credential configured for provider ${resolved.providerId}`,
-        retryable: false
-      })
-    }
-
-    const adapter = deps.registry.require(resolved.providerId)
-
-    // Create an AbortController and tie it to the client connection so that a
-    // disconnect cancels the upstream provider request (T305: abort propagation).
-    const controller = new AbortController()
-    const onClose = () => controller.abort()
-    res.on('close', onClose)
-    res.once('finish', () => res.off('close', onClose))
-
-    const ctx: ProviderContext = {
-      credentialRef: refFor(resolved.providerId),
-      credential,
-      signal: controller.signal,
-      requestId
+    let routes: RouteCandidate[]
+    if (deps.resolveRoutes) {
+      const rl = await deps.resolveRoutes(body.model)
+      routes = rl.routes.length > 0 ? rl.routes : [primaryRoute(resolved)]
+    } else {
+      routes = [primaryRoute(resolved)]
     }
 
     const normalized: NormalizedChatRequest = {
-      model: resolved.providerModelId,
+      model: routes[0].providerModelId,
       messages: body.messages.map((m) => ({
         role: m.role as NormalizedChatRequest['messages'][number]['role'],
         content: m.content,
@@ -157,22 +139,62 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       ...(body.responseFormat ? { responseFormat: body.responseFormat } : {})
     }
 
+    // Create an AbortController and tie it to the client connection so that a
+    // disconnect cancels the upstream provider request (T305: abort propagation).
+    const controller = new AbortController()
+    const onClose = () => controller.abort()
+    res.on('close', onClose)
+    res.once('finish', () => res.off('close', onClose))
+
     if (body.stream) {
-      return handleStream(res, deps, adapter, ctx, normalized, body.model, resolved, requestId, startedAt)
+      return handleStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
     }
-    return handleNonStream(res, deps, adapter, ctx, normalized, body.model, resolved, requestId, startedAt)
+    return handleNonStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
   }
 
-  async function handleStream(
+  // Build a per-route context and validate credential existence.
+  async function buildRouteContext(
+    deps: GatewayDependencies,
+    route: RouteCandidate,
+    signal: AbortSignal,
+    requestId: string
+  ): Promise<{ ctx: ProviderContext; adapter: ProviderAdapter; resolvedModelId: string }> {
+    const credential = await deps.getCredential(refFor(route.providerId))
+    if (!credential) {
+      throw new ProviderError({
+        type: 'AUTH_ERROR',
+        message: `No credential configured for provider ${route.providerId}`,
+        retryable: false
+      })
+    }
+    const adapter = deps.registry.require(route.providerId)
+    const ctx: ProviderContext = {
+      credentialRef: refFor(route.providerId),
+      credential,
+      signal,
+      requestId
+    }
+    return { ctx, adapter, resolvedModelId: route.providerModelId }
+  }
+
+  // Decide whether an error should trigger fallback to the next route.
+  // Per T701 we only fall back on retryable failures, never on client/auth/model
+  // errors or provider rejections.
+  function isRetryable(err: unknown): boolean {
+    return err instanceof ProviderError && err.retryable === true
+  }
+
+  // Streaming dispatch with fallback. Fallback only happens BEFORE any chunk is
+  // written to the client; once a stream starts we commit to that route.
+  async function handleStreamRoutes(
     res: ServerResponse,
     deps: GatewayDependencies,
-    adapter: ProviderAdapter,
-    ctx: ProviderContext,
+    routes: RouteCandidate[],
+    signal: AbortSignal,
     normalized: NormalizedChatRequest,
     virtualModelId: string,
-    resolved: NonNullable<Awaited<ReturnType<GatewayDependencies['resolveModel']>>>,
     requestId: string,
-    startedAt: number
+    _startedAt: number
   ): Promise<void> {
     res.writeHead(200, {
       'content-type': 'text/event-stream',
@@ -180,121 +202,224 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       connection: 'keep-alive'
     })
 
-    let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
-    let status: GatewayUsage['status'] = 'success'
-    let errorCode: string | undefined
-
-    try {
-      for await (const chunk of adapter.chat(ctx, normalized)) {
-        if (ctx.signal.aborted) {
-          status = 'aborted'
-          break
+    let lastErr: unknown
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i]
+      // If any chunk was already written we cannot fall back.
+      if (res.writableEnded || resDestroyed(res)) break
+      const attemptStart = Date.now()
+      try {
+        const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
+        let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
+        let status: GatewayUsage['status'] = 'success'
+        let started = false
+        for await (const chunk of adapter.chat(ctx, { ...normalized, model: route.providerModelId })) {
+          if (ctx.signal.aborted) {
+            status = 'aborted'
+            break
+          }
+          if (chunk.usage) usage = chunk.usage
+          const payload = chunkToSseData(chunk)
+          if (payload) {
+            started = true
+            res.write(`data: ${payload}\n\n`)
+          }
+          if (chunk.kind === 'finish') break
         }
-        if (chunk.usage) usage = chunk.usage
-        const payload = chunkToSseData(chunk)
-        if (payload) res.write(`data: ${payload}\n\n`)
-        if (chunk.kind === 'finish') break
+        if (ctx.signal.aborted) status = 'aborted'
+        if (!started) {
+          // Nothing emitted and not aborted -> treat as success-so-far; write DONE.
+          status = resDestroyed(res) ? status : 'success'
+        }
+        if (status === 'success' && !res.destroyed && !res.writableEnded) {
+          res.write('data: [DONE]\n\n')
+        }
+        if (!res.destroyed && !res.writableEnded) {
+          res.end()
+        }
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          cachedTokens: usage?.cachedTokens ?? 0,
+          latencyMs: Date.now() - attemptStart,
+          status,
+          routeAttempt: i
+        })
+        logger.info('stream route', { requestId, route: i, providerId: route.providerId, status })
+        return
+      } catch (err) {
+        lastErr = err
+        const code = err instanceof ProviderError ? err.type : 'STREAM_ERROR'
+        // Only fall back on retryable failures; any emitted chunk prevents fallback.
+        if (!isRetryable(err) || resDestroyed(res) || res.writableEnded) {
+          if (!res.destroyed && !res.writableEnded) {
+            res.write(`data: ${JSON.stringify({ error: toGatewayErrorBody(err).error })}\n\n`)
+            res.write('data: [DONE]\n\n')
+            res.end()
+          }
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'error',
+            errorCode: code,
+            routeAttempt: i
+          })
+          logger.info('stream route error', { requestId, route: i, providerId: route.providerId, code })
+          return
+        }
+        // Retryable and nothing written: record the failed attempt, try next route.
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedTokens: 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'error',
+          errorCode: code,
+          routeAttempt: i
+        })
+        logger.warn('stream route fallback', { requestId, route: i, providerId: route.providerId, code })
       }
-      // A client disconnect during a suspended generator yields no exception but
-      // the signal is aborted; reflect that in the recorded status.
-      if (ctx.signal.aborted) status = 'aborted'
-      if (status === 'success') {
-        res.write('data: [DONE]\n\n')
-      }
-    } catch (err) {
-      status = 'error'
-      errorCode = err instanceof ProviderError ? err.type : 'STREAM_ERROR'
-      if (!res.destroyed && !res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ error: toGatewayErrorBody(err).error })}\n\n`)
-        res.write('data: [DONE]\n\n')
-      }
-    } finally {
-      if (!res.destroyed && !res.writableEnded) {
-        res.end()
-      }
-      await recordUsage(deps, {
-        requestId,
-        virtualModelId,
-        providerId: resolved.providerId,
-        providerModelId: resolved.providerModelId,
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
-        cachedTokens: usage?.cachedTokens ?? 0,
-        latencyMs: Date.now() - startedAt,
-        status,
-        errorCode
-      })
-      logger.info('stream completed', { requestId, status, errorCode })
+    }
+
+    // All routes exhausted (or retryable failures with no fallback left).
+    const err = lastErr ?? new ProviderError({ type: 'STREAM_ERROR', message: 'No route succeeded.', retryable: false })
+    if (!res.destroyed && !res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: toGatewayErrorBody(err).error })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      res.end()
     }
   }
 
-  async function handleNonStream(
+  // Non-streaming dispatch with fallback. We buffer content and only write on
+  // success so fallback can be clean before any bytes reach the client.
+  async function handleNonStreamRoutes(
     res: ServerResponse,
     deps: GatewayDependencies,
-    adapter: ProviderAdapter,
-    ctx: ProviderContext,
+    routes: RouteCandidate[],
+    signal: AbortSignal,
     normalized: NormalizedChatRequest,
     virtualModelId: string,
-    resolved: NonNullable<Awaited<ReturnType<GatewayDependencies['resolveModel']>>>,
     requestId: string,
     startedAt: number
   ): Promise<void> {
-    let content = ''
-    let finishReason: string | undefined
-    let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
-
-    try {
-      for await (const chunk of adapter.chat(ctx, normalized)) {
-        if (chunk.kind === 'content_delta' && chunk.delta) content += chunk.delta
-        if (chunk.usage) usage = chunk.usage
-        if (chunk.kind === 'finish') {
-          finishReason = chunk.finishReason
-          break
+    let lastErr: unknown
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i]
+      const attemptStart = Date.now()
+      try {
+        const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
+        let content = ''
+        let finishReason: string | undefined
+        let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
+        for await (const chunk of adapter.chat(ctx, { ...normalized, model: route.providerModelId })) {
+          if (ctx.signal.aborted) break
+          if (chunk.kind === 'content_delta' && chunk.delta) content += chunk.delta
+          if (chunk.usage) usage = chunk.usage
+          if (chunk.kind === 'finish') {
+            finishReason = chunk.finishReason
+            break
+          }
         }
-      }
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(
-        JSON.stringify({
-          id: requestId,
-          object: 'chat.completion',
-          choices: [
-            { index: 0, message: { role: 'assistant', content }, finish_reason: finishReason ?? 'stop' }
-          ],
-          ...(usage
-            ? { usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens } }
-            : {})
+        if (ctx.signal.aborted) {
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            cachedTokens: usage?.cachedTokens ?? 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'aborted',
+            routeAttempt: i
+          })
+          return
+        }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            id: requestId,
+            object: 'chat.completion',
+            choices: [
+              { index: 0, message: { role: 'assistant', content }, finish_reason: finishReason ?? 'stop' }
+            ],
+            ...(usage
+              ? { usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens } }
+              : {})
+          })
+        )
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          cachedTokens: usage?.cachedTokens ?? 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'success',
+          routeAttempt: i
         })
-      )
-      await recordUsage(deps, {
-        requestId,
-        virtualModelId,
-        providerId: resolved.providerId,
-        providerModelId: resolved.providerModelId,
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
-        cachedTokens: usage?.cachedTokens ?? 0,
-        latencyMs: Date.now() - startedAt,
-        status: 'success'
-      })
-      logger.info('completion done', { requestId, latencyMs: Date.now() - startedAt })
-    } catch (err) {
-      const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
-      res.writeHead(status, { 'content-type': 'application/json' })
-      res.end(JSON.stringify(toGatewayErrorBody(err)))
-      await recordUsage(deps, {
-        requestId,
-        virtualModelId,
-        providerId: resolved.providerId,
-        providerModelId: resolved.providerModelId,
-        inputTokens: 0,
-        outputTokens: 0,
-        cachedTokens: 0,
-        latencyMs: Date.now() - startedAt,
-        status: 'error',
-        errorCode: err instanceof ProviderError ? err.type : 'INTERNAL_ERROR'
-      })
-      logger.error('completion error', { requestId, error: err instanceof Error ? err.message : String(err) })
+        logger.info('completion done', { requestId, route: i, providerId: route.providerId, latencyMs: Date.now() - startedAt })
+        return
+      } catch (err) {
+        lastErr = err
+        const code = err instanceof ProviderError ? err.type : 'INTERNAL_ERROR'
+        if (!isRetryable(err)) {
+          const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+          if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
+          res.end(JSON.stringify(toGatewayErrorBody(err)))
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'error',
+            errorCode: code,
+            routeAttempt: i
+          })
+          logger.error('completion error', { requestId, route: i, error: err instanceof Error ? err.message : String(err) })
+          return
+        }
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedTokens: 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'error',
+          errorCode: code,
+          routeAttempt: i
+        })
+        logger.warn('completion fallback', { requestId, route: i, providerId: route.providerId, code })
+      }
     }
+
+    const err = lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'All routes failed.', retryable: false })
+    const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+    if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(toGatewayErrorBody(err)))
   }
 
   return {
@@ -333,8 +458,16 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
   }
 }
 
+function primaryRoute(resolved: { providerId: string; providerModelId: string }): RouteCandidate {
+  return { providerId: resolved.providerId, providerModelId: resolved.providerModelId }
+}
+
 function refFor(providerId: string): string {
   return `provider.${providerId}.primary`
+}
+
+function resDestroyed(res: ServerResponse): boolean {
+  return res.destroyed || res.writableEnded
 }
 
 function isAllowedHost(req: IncomingMessage): boolean {

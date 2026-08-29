@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { openDatabase, closeDatabase, type PersistedConnection } from '../database/connection'
-import { ProviderRepository, ModelRepository, VirtualModelRepository } from '../database/repositories'
+import { ProviderRepository, ModelRepository, VirtualModelRepository, RoutingPolicyRepository } from '../database/repositories'
 import { VirtualModelService } from './virtualModelService'
 
 describe('VirtualModelService', () => {
@@ -51,5 +51,80 @@ describe('VirtualModelService', () => {
     expect(models[0].id).toBe('meow-coding')
     expect(models[0].object).toBe('model')
     expect(models[0].owned_by).toBe('meow-gateway')
+  })
+})
+
+describe('VirtualModelService.resolveRoutes (T701)', () => {
+  let db: PersistedConnection
+  let vmRepo: VirtualModelRepository
+  let policyRepo: RoutingPolicyRepository
+  let service: VirtualModelService
+
+  beforeEach(async () => {
+    db = await openDatabase(':memory:')
+    const providerRepo = new ProviderRepository(db)
+    const modelRepo = new ModelRepository(db)
+    vmRepo = new VirtualModelRepository(db)
+    policyRepo = new RoutingPolicyRepository(db)
+    providerRepo.create({ id: 'deepseek', type: 'deepseek', display_name: 'DeepSeek' })
+    providerRepo.create({ id: 'openai', type: 'openai', display_name: 'OpenAI' })
+    modelRepo.create({ provider_id: 'deepseek', provider_model_id: 'deepseek-chat', display_name: 'D' })
+    modelRepo.create({ provider_id: 'openai', provider_model_id: 'gpt-4o', display_name: 'G' })
+    service = new VirtualModelService(vmRepo, policyRepo)
+  })
+
+  afterEach(() => closeDatabase(db))
+
+  it('returns a single primary route when no policy is attached', async () => {
+    vmRepo.create({ display_name: 'meow-coding', provider_id: 'deepseek', provider_model_id: 'deepseek-chat' })
+    const rl = await service.resolveRoutes('meow-coding')
+    expect(rl.routes).toEqual([{ providerId: 'deepseek', providerModelId: 'deepseek-chat' }])
+    expect(rl.usedFallback).toBe(false)
+  })
+
+  it('prepends the primary route and appends policy candidates', async () => {
+    const policy = policyRepo.create({
+      name: 'fb',
+      config_json: JSON.stringify([{ providerId: 'openai', providerModelId: 'gpt-4o' }])
+    })
+    vmRepo.create({
+      display_name: 'meow-coding',
+      provider_id: 'deepseek',
+      provider_model_id: 'deepseek-chat',
+      routing_policy_id: policy.id
+    })
+    const rl = await service.resolveRoutes('meow-coding')
+    expect(rl.routes).toEqual([
+      { providerId: 'deepseek', providerModelId: 'deepseek-chat' },
+      { providerId: 'openai', providerModelId: 'gpt-4o' }
+    ])
+    expect(rl.usedFallback).toBe(true)
+  })
+
+  it('dedupes a candidate that repeats the primary provider (loop prevention)', async () => {
+    const policy = policyRepo.create({
+      name: 'fb',
+      config_json: JSON.stringify([
+        { providerId: 'deepseek', providerModelId: 'deepseek-chat' },
+        { providerId: 'openai', providerModelId: 'gpt-4o' }
+      ])
+    })
+    vmRepo.create({
+      display_name: 'meow-coding',
+      provider_id: 'deepseek',
+      provider_model_id: 'deepseek-chat',
+      routing_policy_id: policy.id
+    })
+    const rl = await service.resolveRoutes('meow-coding')
+    expect(rl.routes).toEqual([
+      { providerId: 'deepseek', providerModelId: 'deepseek-chat' },
+      { providerId: 'openai', providerModelId: 'gpt-4o' }
+    ])
+  })
+
+  it('returns empty routes for an unknown or disabled virtual model', async () => {
+    expect((await service.resolveRoutes('nope')).routes).toEqual([])
+    vmRepo.create({ display_name: 'off', provider_id: 'openai', provider_model_id: 'gpt-4o', enabled: false })
+    expect((await service.resolveRoutes('off')).routes).toEqual([])
   })
 })
