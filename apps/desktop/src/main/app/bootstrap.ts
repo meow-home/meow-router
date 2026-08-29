@@ -328,7 +328,7 @@ function isValidVirtualModelInput(v: unknown): v is NewVirtualModelInput {
   return true
 }
 
-function isValidModelInput(v: unknown): v is NewModel {
+export function isValidModelInput(v: unknown): v is NewModel {
   if (!isObject(v)) return false
   if (!isNonEmptyString(v['provider_id'])) return false
   if (!isNonEmptyString(v['provider_model_id'])) return false
