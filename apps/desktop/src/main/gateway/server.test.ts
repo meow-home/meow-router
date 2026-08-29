@@ -12,8 +12,9 @@ import {
 import { createGatewayServer, DEFAULT_HOST, type GatewayServer } from './server'
 import type { GatewayDependencies, GatewayUsage, ResolvedModel, GatewayLogger } from './types'
 import { openDatabase, closeDatabase, type PersistedConnection } from '../database/connection'
-import { ProviderRepository, ModelRepository, VirtualModelRepository } from '../database/repositories'
+import { ProviderRepository, ModelRepository, VirtualModelRepository, UsageRepository } from '../database/repositories'
 import { VirtualModelService } from './virtualModelService'
+import { UsageService } from './usageService'
 
 function makeFakeAdapter(id: string, opts?: { fail?: boolean }): ProviderAdapter {
   return {
@@ -484,6 +485,108 @@ describe('virtual model integration (T401)', () => {
       })
       expect(status).toBe(404)
       expect(body.error.code).toBe('MODEL_NOT_FOUND')
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('usage recording integration (T501)', () => {
+  let db: PersistedConnection
+  let usageRepo: UsageRepository
+
+  beforeEach(async () => {
+    db = await openDatabase(':memory:')
+    const providerRepo = new ProviderRepository(db)
+    const modelRepo = new ModelRepository(db)
+    usageRepo = new UsageRepository(db)
+    providerRepo.create({ id: 'openai', type: 'openai', display_name: 'OpenAI' })
+    modelRepo.create({ provider_id: 'openai', provider_model_id: 'gpt-4o', display_name: 'GPT-4o', input_price: 2, output_price: 8 })
+  })
+
+  afterEach(() => closeDatabase(db))
+
+  async function start(): Promise<{ server: GatewayServer; addr: { host: string; port: number } }> {
+    const registry = new ProviderRegistry()
+    registry.register(makeFakeAdapter('openai'))
+    const usage = new UsageService(usageRepo, new ModelRepository(db))
+    const deps: GatewayDependencies = {
+      registry,
+      getCredential: async () => 'sk-test',
+      resolveModel: async (id) =>
+        id === 'gpt-4o'
+          ? {
+              providerId: 'openai',
+              providerModelId: 'gpt-4o',
+              model: {
+                id: 'gpt-4o',
+                providerModelId: 'gpt-4o',
+                displayName: 'GPT-4o',
+                capabilities: { streaming: true, tools: true, vision: true, reasoning: false, structuredOutput: true }
+              }
+            }
+          : null,
+      listModels: async () => [],
+      recordUsage: (u) => usage.recordUsage(u)
+    }
+    const server = createGatewayServer(deps, { host: DEFAULT_HOST, port: 0 })
+    const addr = await server.start()
+    return { server, addr }
+  }
+
+  it('records a usage row for a successful request with cost', async () => {
+    const { server, addr } = await start()
+    try {
+      await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      const rows = usageRepo.list()
+      expect(rows).toHaveLength(1)
+      expect(rows[0].status).toBe('success')
+      expect(rows[0].input_tokens).toBe(5)
+      expect(rows[0].estimated_cost).not.toBeNull()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('records an error status for a failed request', async () => {
+    const registry = new ProviderRegistry()
+    registry.register(makeFakeAdapter('openai', { fail: true }))
+    const usage = new UsageService(usageRepo, new ModelRepository(db))
+    const deps: GatewayDependencies = {
+      registry,
+      getCredential: async () => 'sk-test',
+      resolveModel: async (id) =>
+        id === 'gpt-4o'
+          ? {
+              providerId: 'openai',
+              providerModelId: 'gpt-4o',
+              model: {
+                id: 'gpt-4o',
+                providerModelId: 'gpt-4o',
+                displayName: 'GPT-4o',
+                capabilities: { streaming: true, tools: true, vision: true, reasoning: false, structuredOutput: true }
+              }
+            }
+          : null,
+      listModels: async () => [],
+      recordUsage: (u) => usage.recordUsage(u)
+    }
+    const server = createGatewayServer(deps, { host: DEFAULT_HOST, port: 0 })
+    const addr = await server.start()
+    try {
+      await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      const rows = usageRepo.list()
+      expect(rows).toHaveLength(1)
+      expect(rows[0].status).toBe('error')
+      expect(rows[0].error_code).toBe('AUTH_ERROR')
     } finally {
       await server.stop()
     }

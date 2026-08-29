@@ -94,6 +94,35 @@ export const MIGRATIONS: Migration[] = [
           ON virtual_model (provider_id);
       `)
     }
+  },
+  {
+    version: 3,
+    name: 'request_usage',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS request_usage (
+          id                  TEXT PRIMARY KEY,
+          request_id          TEXT NOT NULL,
+          virtual_model_id    TEXT NOT NULL,
+          provider_id         TEXT NOT NULL,
+          provider_model_id   TEXT NOT NULL,
+          input_tokens        INTEGER NOT NULL,
+          output_tokens       INTEGER NOT NULL,
+          cached_tokens       INTEGER NOT NULL DEFAULT 0,
+          estimated_cost      REAL,
+          latency_ms          INTEGER NOT NULL DEFAULT 0,
+          status              TEXT NOT NULL,
+          error_code          TEXT,
+          created_at          TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_request_usage_provider
+          ON request_usage (provider_id);
+
+        CREATE INDEX IF NOT EXISTS idx_request_usage_created
+          ON request_usage (created_at);
+      `)
+    }
   }
 ]
 

@@ -14,6 +14,7 @@ import {
   ModelRepository,
   GatewayConfigRepository,
   VirtualModelRepository,
+  UsageRepository,
   VirtualModelError
 } from '../database/repositories'
 import { createCredentialService } from '../credentials/production'
@@ -24,6 +25,7 @@ import { createDeepSeekAdapter } from '@meow-gateway/provider-deepseek'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
 import type { GatewayDependencies } from '../gateway/types'
 import { VirtualModelService } from '../gateway/virtualModelService'
+import { UsageService } from '../gateway/usageService'
 import { IPC_CHANNELS, type NewVirtualModelInput, type IpcResult } from '../../shared/ipc'
 import type { VirtualModelRow } from '../database/types'
 
@@ -32,6 +34,7 @@ export interface MeowGatewayApp {
   registry: ProviderRegistry
   credentials: CredentialService
   virtualModels: VirtualModelService
+  usage: UsageService
   gateway: GatewayServer
   start(): Promise<{ host: string; port: number }>
   stop(): Promise<void>
@@ -45,6 +48,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   const modelRepo = new ModelRepository(db)
   const configRepo = new GatewayConfigRepository(db)
   const virtualModelRepo = new VirtualModelRepository(db)
+  const usageRepo = new UsageRepository(db)
   const credentials = createCredentialService()
 
   const registry = new ProviderRegistry()
@@ -52,15 +56,14 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   registry.register(createDeepSeekAdapter('deepseek'))
 
   const virtualModels = new VirtualModelService(virtualModelRepo)
+  const usage = new UsageService(usageRepo, modelRepo)
 
   const deps: GatewayDependencies = {
     registry,
     getCredential: (ref) => credentials.getCredential(ref),
     resolveModel: (id) => virtualModels.resolveModel(id),
     listModels: () => virtualModels.listModels(),
-    recordUsage: async () => {
-      // Phase 5 wires real usage/cost recording here.
-    },
+    recordUsage: (u) => usage.recordUsage(u),
     logger: console // Electron main: minimal console logger
   }
 
@@ -86,6 +89,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     registry,
     credentials,
     virtualModels,
+    usage,
     gateway,
     async start() {
       const addr = await gateway.start()

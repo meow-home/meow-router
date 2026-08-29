@@ -27,7 +27,7 @@ Record:
 
 ## Acceptance criteria
 
-- [ ] successful requests record usage;
-- [ ] failed requests record status;
-- [ ] cost calculator has deterministic tests;
-- [ ] dashboard totals are derived from persisted records.
+- [x] successful requests record usage;
+- [x] failed requests record status;
+- [x] cost calculator has deterministic tests;
+- [x] dashboard totals are derived from persisted records.

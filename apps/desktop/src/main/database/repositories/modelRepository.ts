@@ -43,6 +43,13 @@ export class ModelRepository {
     return r ? mapRow(r) : undefined
   }
 
+  findByProviderModel(providerId: string, providerModelId: string): ModelRow | undefined {
+    const r = this.db
+      .prepare('SELECT * FROM model WHERE provider_id = ? AND provider_model_id = ?')
+      .get([providerId, providerModelId]) as RawModel | undefined
+    return r ? mapRow(r) : undefined
+  }
+
   listByProvider(providerId: string): ModelRow[] {
     return (
       this.db

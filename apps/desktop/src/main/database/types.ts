@@ -96,3 +96,25 @@ export type NewVirtualModel = {
   routing_policy_id?: string | null
   enabled?: boolean
 }
+
+export interface RequestUsageRow {
+  id: string
+  request_id: string
+  virtual_model_id: string
+  provider_id: string
+  provider_model_id: string
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  estimated_cost: number | null
+  latency_ms: number
+  status: string
+  error_code: string | null
+  created_at: string
+}
+
+export type NewRequestUsage = Omit<RequestUsageRow, 'id' | 'created_at' | 'estimated_cost'> & {
+  id?: string
+  created_at?: string
+  estimated_cost?: number | null
+}
