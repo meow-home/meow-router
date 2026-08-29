@@ -117,12 +117,14 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.virtualModel.get, async (_e, id: string): Promise<IpcResult<VirtualModelRow | null>> => {
+    if (!isNonEmptyString(id)) return badRequest('`id` must be a non-empty string.')
     return wrap(() => repo.findById(id) ?? null)
   })
 
   ipcMain.handle(
     IPC_CHANNELS.virtualModel.create,
     async (_e, input: NewVirtualModelInput): Promise<IpcResult<VirtualModelRow>> => {
+      if (!isValidVirtualModelInput(input)) return badRequest('Invalid virtual-model input.')
       return wrap(() => repo.create(input))
     }
   )
@@ -130,13 +132,43 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
   ipcMain.handle(
     IPC_CHANNELS.virtualModel.update,
     async (_e, id: string, patch: Partial<NewVirtualModelInput>): Promise<IpcResult<VirtualModelRow | null>> => {
+      if (!isNonEmptyString(id) || !isObject(patch)) return badRequest('Invalid update arguments.')
       return wrap(() => repo.update(id, patch) ?? null)
     }
   )
 
   ipcMain.handle(IPC_CHANNELS.virtualModel.delete, async (_e, id: string): Promise<IpcResult<boolean>> => {
+    if (!isNonEmptyString(id)) return badRequest('`id` must be a non-empty string.')
     return wrap(() => repo.delete(id))
   })
+}
+
+// --- IPC input validation (T801) -------------------------------------------
+// The renderer is untrusted; validate every IPC payload before touching the DB.
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
+}
+
+function isValidVirtualModelInput(v: unknown): v is NewVirtualModelInput {
+  if (!isObject(v)) return false
+  if (v['id'] !== undefined && !isNonEmptyString(v['id'])) return false
+  if (!isNonEmptyString(v['display_name']) || !isNonEmptyString(v['provider_id']) || !isNonEmptyString(v['provider_model_id'])) {
+    return false
+  }
+  if (v['routing_policy_id'] !== undefined && v['routing_policy_id'] !== null && !isNonEmptyString(v['routing_policy_id'])) {
+    return false
+  }
+  if (v['enabled'] !== undefined && typeof v['enabled'] !== 'boolean') return false
+  return true
+}
+
+function badRequest(message: string): IpcResult<never> {
+  return { ok: false, error: { message, code: 'INVALID_VIRTUAL_MODEL' } }
 }
 
 async function wrap<T>(fn: () => T): Promise<IpcResult<T>> {

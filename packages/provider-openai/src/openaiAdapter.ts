@@ -1,5 +1,6 @@
 import {
   ProviderError,
+  assertSafeEndpoint,
   type ProviderAdapter,
   type ProviderContext,
   type ModelInfo,
@@ -66,6 +67,20 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
     return ctx.baseUrl || DEFAULT_BASE_URL
   }
 
+  // SSRF guard: a custom provider endpoint must not point at loopback, private,
+  // link-local, or cloud metadata addresses (T801). Throws a clear error.
+  private assertEndpointSafe(ctx: ProviderContext): void {
+    const baseUrl = this.resolveBaseUrl(ctx)
+    const result = assertSafeEndpoint(baseUrl)
+    if (!result.ok) {
+      throw new ProviderError({
+        type: 'REQUEST_REJECTED',
+        message: `Unsafe provider endpoint: ${result.reason}`,
+        retryable: false
+      })
+    }
+  }
+
   private authHeaders(ctx: ProviderContext): Record<string, string> {
     return ctx.credential
       ? { Authorization: `Bearer ${ctx.credential}`, 'Content-Type': 'application/json' }
@@ -73,6 +88,7 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   async getModels(ctx: ProviderContext): Promise<ModelInfo[]> {
+    this.assertEndpointSafe(ctx)
     const url = joinUrl(this.resolveBaseUrl(ctx), '/models')
     let res: Awaited<ReturnType<Fetcher>>
     try {
@@ -117,6 +133,7 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
     ctx: ProviderContext,
     request: NormalizedChatRequest
   ): AsyncIterable<NormalizedChatChunk> {
+    this.assertEndpointSafe(ctx)
     const url = joinUrl(this.resolveBaseUrl(ctx), '/chat/completions')
     // Translate the normalized request into an OpenAI-compatible payload.
     const body = {

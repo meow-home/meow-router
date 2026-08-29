@@ -12,5 +12,10 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "package": "pnpm --filter @meow-gateway/desktop package"
+  },
+  "pnpm": {
+    "overrides": {
+      "tar": "^7.5.19"
+    }
   }
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createOpenAICompatibleAdapter } from './openaiAdapter'
 import type { Fetcher, FetcherResponse } from './http'
 import type { ProviderContext, NormalizedChatChunk } from '@meow-gateway/provider-core'
-import { defineAdapterContractTests, accumulateText } from '@meow-gateway/provider-core'
+import { defineAdapterContractTests, accumulateText, ProviderError } from '@meow-gateway/provider-core'
 
 function jsonResponse(status: number, body: unknown): FetcherResponse {
   return {
@@ -44,6 +44,13 @@ const ctx = (overrides?: Partial<ProviderContext>): ProviderContext => ({
 })
 
 describe('OpenAICompatibleAdapter', () => {
+  it('rejects unsafe (loopback/private) base URL as SSRF', async () => {
+    const fetcher: Fetcher = async () => jsonResponse(200, { data: [] })
+    const adapter = createOpenAICompatibleAdapter('openai', fetcher)
+    await expect(adapter.getModels(ctx({ baseUrl: 'http://127.0.0.1:8080/v1' }))).rejects.toThrow(ProviderError)
+    await expect(adapter.getModels(ctx({ baseUrl: 'http://localhost/v1' }))).rejects.toThrow(/Unsafe provider endpoint/)
+  })
+
   it('getModels returns normalized ModelInfo[]', async () => {
     const fetcher: Fetcher = async (url) => {
       expect(url).toBe(`${BASE_URL}/models`)

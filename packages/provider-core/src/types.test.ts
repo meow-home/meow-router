@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ERROR_TYPES, ProviderError, ProviderRegistry } from './index'
+import { ERROR_TYPES, ProviderError, ProviderRegistry, assertSafeEndpoint } from './index'
 import type { GatewayErrorType, ProviderAdapter } from './index'
 
 describe('provider-core types', () => {
@@ -67,5 +67,32 @@ describe('ProviderRegistry', () => {
     reg.register(makeAdapter('openai'))
     expect(reg.unregister('openai')).toBe(true)
     expect(reg.get('openai')).toBeUndefined()
+  })
+})
+
+describe('assertSafeEndpoint (T801 SSRF)', () => {
+  it('allows a public https endpoint', () => {
+    expect(assertSafeEndpoint('https://api.openai.com/v1').ok).toBe(true)
+  })
+
+  it('rejects loopback hostnames', () => {
+    expect(assertSafeEndpoint('http://localhost/v1').ok).toBe(false)
+    expect(assertSafeEndpoint('http://127.0.0.1/v1').ok).toBe(false)
+    expect(assertSafeEndpoint('http://[::1]/v1').ok).toBe(false)
+  })
+
+  it('rejects private IP ranges', () => {
+    expect(assertSafeEndpoint('http://192.168.1.10/v1').ok).toBe(false)
+    expect(assertSafeEndpoint('http://10.0.0.5/v1').ok).toBe(false)
+    expect(assertSafeEndpoint('http://172.16.0.1/v1').ok).toBe(false)
+  })
+
+  it('rejects link-local and metadata endpoints', () => {
+    expect(assertSafeEndpoint('http://169.254.169.254/latest/meta-data').ok).toBe(false)
+    expect(assertSafeEndpoint('http://metadata.google.internal').ok).toBe(false)
+  })
+
+  it('allows loopback when explicitly permitted', () => {
+    expect(assertSafeEndpoint('http://127.0.0.1/v1', { allowLoopback: true }).ok).toBe(true)
   })
 })

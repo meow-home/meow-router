@@ -33,7 +33,12 @@ export interface GatewayServerOptions {
   port?: number
   host?: string
   version?: string
+  // Per-request hard timeout in ms. The provider request is aborted (-> the
+  // adapter surfaces TIMEOUT) once this elapses. Defaults to 120_000.
+  requestTimeoutMs?: number
 }
+
+export const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
 
 export interface GatewayServer {
   start(): Promise<{ host: string; port: number }>
@@ -46,6 +51,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
   const host = opts.host ?? DEFAULT_HOST
   const port = opts.port ?? DEFAULT_PORT
   const version = opts.version ?? '0.1.0'
+  const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const logger = deps.logger ?? nullLogger
 
   let server: Server | undefined
@@ -146,10 +152,18 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     res.on('close', onClose)
     res.once('finish', () => res.off('close', onClose))
 
-    if (body.stream) {
-      return handleStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
+    // Hard per-request timeout: abort the provider request once it elapses, so
+    // a hung provider cannot hold the client connection open indefinitely (T801).
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
+
+    try {
+      if (body.stream) {
+        return await handleStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
+      }
+      return await handleNonStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
+    } finally {
+      clearTimeout(timeout)
     }
-    return handleNonStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
   }
 
   // Build a per-route context and validate credential existence.
