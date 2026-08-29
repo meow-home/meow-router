@@ -37,9 +37,9 @@ describe('file-backed database persistence', () => {
       const providers2 = new ProviderRepository(db2)
       expect(providers2.findById('p1')).toBeDefined()
 
-      // Re-open did not duplicate the baseline migration.
+      // Re-open did not duplicate any migration (idempotent).
       const rows = db2.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]
-      expect(rows).toHaveLength(1)
+      expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2])
     } finally {
       closeDatabase(db2)
     }

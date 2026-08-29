@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { IPC_CHANNELS, type PingPayload, type PingResult } from '../shared/ipc'
+import { bootstrapMeowGatewayApp, type MeowGatewayApp } from './app/bootstrap'
+
+let meowApp: MeowGatewayApp | undefined
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -26,10 +29,19 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   ipcMain.handle(IPC_CHANNELS.ping, (_e, payload: PingPayload): PingResult => {
     return { pong: 'pong', echo: payload.from }
   })
+
+  // Boot the gateway app (DB, credentials, registry, gateway server, IPC).
+  try {
+    meowApp = await bootstrapMeowGatewayApp()
+    const addr = await meowApp.start()
+    console.info(`[gateway] listening on http://${addr.host}:${addr.port}`)
+  } catch (err) {
+    console.error('[gateway] failed to start', err)
+  }
 
   createWindow()
 
@@ -40,4 +52,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', async () => {
+  if (meowApp) {
+    await meowApp.stop().catch(() => {})
+    meowApp = undefined
+  }
 })

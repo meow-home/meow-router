@@ -11,6 +11,9 @@ import {
 } from '@meow-gateway/provider-core'
 import { createGatewayServer, DEFAULT_HOST, type GatewayServer } from './server'
 import type { GatewayDependencies, GatewayUsage, ResolvedModel, GatewayLogger } from './types'
+import { openDatabase, closeDatabase, type PersistedConnection } from '../database/connection'
+import { ProviderRepository, ModelRepository, VirtualModelRepository } from '../database/repositories'
+import { VirtualModelService } from './virtualModelService'
 
 function makeFakeAdapter(id: string, opts?: { fail?: boolean }): ProviderAdapter {
   return {
@@ -128,6 +131,7 @@ interface GatewayJsonResponse {
   object: string
   error: { code: string; type: string; message: string }
   choices: Array<{ message: { content: string } }>
+  data?: Array<{ id: string }>
 }
 
 async function fetchJson(url: string, init?: RequestInit): Promise<{ status: number; body: GatewayJsonResponse }> {
@@ -395,6 +399,91 @@ describe('streaming (T305)', () => {
       })
       const success = harness.usages.filter((u) => u.status === 'success')
       expect(success).toHaveLength(0)
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('virtual model integration (T401)', () => {
+  let db: PersistedConnection
+  let vmRepo: VirtualModelRepository
+  let service: VirtualModelService
+
+  beforeEach(async () => {
+    db = await openDatabase(':memory:')
+    const providerRepo = new ProviderRepository(db)
+    const modelRepo = new ModelRepository(db)
+    vmRepo = new VirtualModelRepository(db)
+    providerRepo.create({ id: 'deepseek', type: 'deepseek', display_name: 'DeepSeek' })
+    providerRepo.create({ id: 'openai', type: 'openai', display_name: 'OpenAI' })
+    modelRepo.create({ provider_id: 'openai', provider_model_id: 'gpt-4o', display_name: 'GPT-4o' })
+    modelRepo.create({ provider_id: 'deepseek', provider_model_id: 'deepseek-chat', display_name: 'D' })
+    service = new VirtualModelService(vmRepo)
+  })
+
+  afterEach(() => closeDatabase(db))
+
+  async function start(): Promise<{ server: GatewayServer; addr: { host: string; port: number } }> {
+    const registry = new ProviderRegistry()
+    registry.register(makeFakeAdapter('openai'))
+    registry.register(makeFakeAdapter('deepseek'))
+    const deps: GatewayDependencies = {
+      registry,
+      getCredential: async () => 'sk-test',
+      resolveModel: (id) => service.resolveModel(id),
+      listModels: () => service.listModels(),
+      recordUsage: async () => {}
+    }
+    const server = createGatewayServer(deps, { host: DEFAULT_HOST, port: 0 })
+    const addr = await server.start()
+    return { server, addr }
+  }
+
+  it('/v1/models lists enabled virtual models', async () => {
+    vmRepo.create({ display_name: 'meow-coding', provider_id: 'deepseek', provider_model_id: 'deepseek-chat' })
+    vmRepo.create({ display_name: 'off', provider_id: 'openai', provider_model_id: 'gpt-4o', enabled: false })
+    const { server, addr } = await start()
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/models`)
+      expect(status).toBe(200)
+      expect(body.object).toBe('list')
+      expect(body.choices).toBeUndefined() // no choices field on model list
+      const ids = (body.data as { id: string }[] | undefined)?.map((m) => m.id) ?? []
+      expect(ids).toContain('meow-coding')
+      expect(ids).not.toContain('off')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('chat resolves the virtual model to the mapped provider', async () => {
+    vmRepo.create({ display_name: 'meow-coding', provider_id: 'deepseek', provider_model_id: 'deepseek-chat' })
+    const { server, addr } = await start()
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meow-coding', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(200)
+      expect(body.object).toBe('chat.completion')
+      expect(body.choices[0].message.content).toContain('Hello from deepseek')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('unknown virtual model returns MODEL_NOT_FOUND', async () => {
+    const { server, addr } = await start()
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'nope', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(404)
+      expect(body.error.code).toBe('MODEL_NOT_FOUND')
     } finally {
       await server.stop()
     }

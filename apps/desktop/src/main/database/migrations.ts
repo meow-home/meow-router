@@ -70,6 +70,30 @@ export const MIGRATIONS: Migration[] = [
         );
       `)
     }
+  },
+  {
+    version: 2,
+    name: 'virtual_models',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS virtual_model (
+          id                 TEXT PRIMARY KEY,
+          display_name       TEXT NOT NULL,
+          provider_id        TEXT NOT NULL REFERENCES provider(id),
+          provider_model_id  TEXT NOT NULL,
+          routing_policy_id  TEXT,
+          enabled            INTEGER NOT NULL DEFAULT 1,
+          created_at         TEXT NOT NULL,
+          updated_at         TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_virtual_model_name
+          ON virtual_model (display_name);
+
+        CREATE INDEX IF NOT EXISTS idx_virtual_model_provider
+          ON virtual_model (provider_id);
+      `)
+    }
   }
 ]
 

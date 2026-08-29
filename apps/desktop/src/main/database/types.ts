@@ -76,3 +76,23 @@ export type NewModel = {
 }
 
 export type NewGatewayConfig = Omit<GatewayConfigRow, 'id'>
+
+export interface VirtualModelRow {
+  id: string
+  display_name: string
+  provider_id: string
+  provider_model_id: string
+  routing_policy_id: string | null
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type NewVirtualModel = {
+  id?: string
+  display_name: string
+  provider_id: string
+  provider_model_id: string
+  routing_policy_id?: string | null
+  enabled?: boolean
+}

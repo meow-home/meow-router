@@ -20,7 +20,7 @@ meow-coding -> deepseek / deepseek-chat
 
 ## Acceptance criteria
 
-- [ ] `/v1/models` lists enabled virtual models;
-- [ ] chat request resolves virtual model;
-- [ ] changing mapping does not require changing client configuration;
-- [ ] invalid provider/model mapping is detected.
+- [x] `/v1/models` lists enabled virtual models;
+- [x] chat request resolves virtual model;
+- [x] changing mapping does not require changing client configuration;
+- [x] invalid provider/model mapping is detected.

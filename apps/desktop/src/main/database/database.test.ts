@@ -28,19 +28,20 @@ describe('database connection & migrations', () => {
     expect(names).toContain('account')
     expect(names).toContain('model')
     expect(names).toContain('gateway_config')
+    expect(names).toContain('virtual_model')
   })
 
-  it('records the baseline migration exactly once', () => {
+  it('records migrations exactly once', () => {
     const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]
-    expect(rows.length).toBe(1)
-    expect(rows[0].version).toBe(1)
+    expect(rows.length).toBe(2)
+    expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2])
   })
 
   it('applies migrations in ascending version order', () => {
     const rows = db
       .prepare('SELECT version FROM schema_migrations ORDER BY version')
       .all() as { version: number }[]
-    expect(rows.map((r) => r.version)).toEqual([1])
+    expect(rows.map((r) => r.version)).toEqual([1, 2])
   })
 })
 
