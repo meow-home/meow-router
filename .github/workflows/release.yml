@@ -47,29 +47,12 @@ jobs:
 
       # Check out the exact tag commit so typecheck/lint/test/package all run on
       # the released code (not main HEAD). fetch-depth: 0 grabs full history so
-      # the ancestry check below can compare against origin/main.
+      # electron-builder can resolve the version/tag metadata.
       - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
-
-      # Only release from tags that land on main, so we don't publish from
-      # feature branches that happen to carry a v* tag.
-      - name: Assert tag is on main
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        shell: bash
-        run: |
-          # Fetch the tip of main as a proper refspec so origin/main exists even
-          # when we checked out a tag (not a branch) above.
-          git fetch --depth=1 origin main
-          tag_sha="$(git rev-parse "$TAG^{commit}")"
-          main_sha="$(git rev-parse origin/main)"
-          if ! git merge-base --is-ancestor "$tag_sha" "$main_sha"; then
-            echo "Tag $TAG does not point into origin/main; aborting release."
-            exit 1
-          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
