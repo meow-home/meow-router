@@ -9,7 +9,7 @@ import type {
   RequestUsageRow,
   NewGatewayConfig
 } from '../main/database/types'
-export type { NewGatewayConfig } from '../main/database/types'
+export type { NewGatewayConfig, ModelRow, VirtualModelRow } from '../main/database/types'
 import type { DashboardTotals } from '../main/database/repositories/usageRepository'
 export type { DashboardTotals } from '../main/database/repositories/usageRepository'
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
