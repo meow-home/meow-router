@@ -31,7 +31,7 @@ export async function openDatabase(filePath: string): Promise<PersistedConnectio
   }
 
   const db = await SqlDb.open(existing)
-  migrate(db)
+  const applied = migrate(db)
 
   const conn = db as unknown as PersistedConnection
   conn.filePath = filePath
@@ -39,6 +39,13 @@ export async function openDatabase(filePath: string): Promise<PersistedConnectio
     if (filePath === ':memory:') return
     writeFileSync(filePath, Buffer.from(db.exportBytes()))
   }
+
+  // Flush straight away when a migration ran. sql.js holds everything in memory,
+  // so an unflushed migration is lost if the process dies before the next write
+  // — and re-runs on the following launch. Idempotent DDL survives that, but a
+  // migration that edits data would re-apply over the user's later choices.
+  if (applied.length > 0) conn.save()
+
   return conn
 }
 

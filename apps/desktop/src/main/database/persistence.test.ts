@@ -45,6 +45,33 @@ describe('file-backed database persistence', () => {
     }
   })
 
+  it('persists the migration ledger at open, before any write or close', async () => {
+    // sql.js is in-memory: a migration that is never flushed re-runs on the next
+    // launch. Harmless for idempotent DDL, but a data migration would re-apply
+    // and overwrite whatever the user has since chosen.
+    const freshDir = mkdtempSync(join(tmpdir(), 'meow-gateway-fresh-'))
+    const freshPath = join(freshDir, 'meow.db')
+    try {
+      const fresh = await openDatabase(freshPath)
+      // Deliberately no repository write and no close: read the file as a
+      // process killed right after startup would leave it.
+      expect(existsSync(freshPath)).toBe(true)
+
+      const reopened = await openDatabase(freshPath)
+      try {
+        const rows = reopened.prepare('SELECT version FROM schema_migrations').all() as {
+          version: number
+        }[]
+        expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+      } finally {
+        closeDatabase(reopened)
+      }
+      closeDatabase(fresh)
+    } finally {
+      rmSync(freshDir, { recursive: true, force: true })
+    }
+  })
+
   it('store no secrets in the on-disk database', async () => {
     const providers = new ProviderRepository(db)
     providers.create({ id: 'p1', type: 'openai', display_name: 'OpenAI', enabled: true })
