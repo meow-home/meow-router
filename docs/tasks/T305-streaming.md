@@ -15,8 +15,8 @@ Support end-to-end SSE streaming.
 
 ## Acceptance criteria
 
-- [ ] chunks arrive incrementally;
-- [ ] stream closes cleanly;
-- [ ] provider request is aborted after client disconnect when supported;
-- [ ] partial streams do not create false successful usage records;
-- [ ] stream errors use the documented error contract.
+- [x] chunks arrive incrementally;
+- [x] stream closes cleanly;
+- [x] provider request is aborted after client disconnect when supported;
+- [x] partial streams do not create false successful usage records;
+- [x] stream errors use the documented error contract.

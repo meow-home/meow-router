@@ -14,8 +14,8 @@ Implement `/v1/chat/completions`.
 
 ## Acceptance criteria
 
-- [ ] valid request reaches selected provider;
-- [ ] unknown model returns MODEL_NOT_FOUND;
-- [ ] malformed request returns client error;
-- [ ] provider authentication failure is mapped;
-- [ ] request ID is included in internal logs.
+- [x] valid request reaches selected provider;
+- [x] unknown model returns MODEL_NOT_FOUND;
+- [x] malformed request returns client error;
+- [x] provider authentication failure is mapped;
+- [x] request ID is included in internal logs.

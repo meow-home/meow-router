@@ -10,6 +10,15 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@meow-gateway/provider-core':
+        specifier: workspace:^
+        version: link:../../packages/provider-core
+      '@meow-gateway/provider-deepseek':
+        specifier: workspace:^
+        version: link:../../packages/provider-deepseek
+      '@meow-gateway/provider-openai':
+        specifier: workspace:^
+        version: link:../../packages/provider-openai
       electron-store:
         specifier: ^8.2.0
         version: 8.2.0

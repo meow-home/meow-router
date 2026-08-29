@@ -15,8 +15,8 @@ Implement a localhost HTTP gateway.
 
 ## Acceptance criteria
 
-- [ ] `/health` returns OK;
-- [ ] server binds only to loopback;
-- [ ] occupied port produces a clear error;
-- [ ] shutdown closes active server resources;
-- [ ] startup/shutdown are covered by tests.
+- [x] `/health` returns OK;
+- [x] server binds only to loopback;
+- [x] occupied port produces a clear error;
+- [x] shutdown closes active server resources;
+- [x] startup/shutdown are covered by tests.
