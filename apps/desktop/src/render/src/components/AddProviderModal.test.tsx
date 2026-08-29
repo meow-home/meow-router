@@ -46,6 +46,50 @@ describe('AddProviderModal', () => {
     expect(gw.setProviderCredential).not.toHaveBeenCalled()
   })
 
+  describe('display name defaults to the selected type', () => {
+    const many = [
+      types[0],
+      { id: 'groq', displayName: 'Groq', defaultBaseUrl: 'https://api.groq.com/openai/v1', authType: 'bearer' as const },
+      { id: 'opencode', displayName: 'opencode Zen', defaultBaseUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' as const },
+    ]
+
+    function open() {
+      render(<AddProviderModal open types={many} onClose={vi.fn()} onCreated={vi.fn()} />)
+      return {
+        name: screen.getByLabelText('Display name') as HTMLInputElement,
+        type: screen.getByRole('combobox') as HTMLSelectElement,
+      }
+    }
+
+    it('prefills with the default type name on open', () => {
+      const { name } = open()
+      expect(name.value).toBe('DeepSeek')
+    })
+
+    it('follows the type while the name is untouched', () => {
+      const { name, type } = open()
+      fireEvent.change(type, { target: { value: 'groq' } })
+      expect(name.value).toBe('Groq')
+      fireEvent.change(type, { target: { value: 'opencode' } })
+      expect(name.value).toBe('opencode Zen')
+    })
+
+    it('keeps a hand-typed name when the type changes', () => {
+      const { name, type } = open()
+      fireEvent.change(name, { target: { value: 'Con meo' } })
+      fireEvent.change(type, { target: { value: 'groq' } })
+      expect(name.value).toBe('Con meo')
+    })
+
+    it('resumes prefilling after the name is cleared', () => {
+      const { name, type } = open()
+      fireEvent.change(name, { target: { value: 'Con meo' } })
+      fireEvent.change(name, { target: { value: '' } })
+      fireEvent.change(type, { target: { value: 'groq' } })
+      expect(name.value).toBe('Groq')
+    })
+  })
+
   it('shows an error and keeps the modal open when createProvider rejects', async () => {
     gw.createProvider.mockRejectedValue(new Error('boom'))
     const onClose = vi.fn()

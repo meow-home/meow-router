@@ -25,12 +25,23 @@ export function AddProviderModal({
   useEffect(() => {
     if (!open) return
     setType(types[0]?.id ?? '')
-    setDisplayName('')
+    setDisplayName(types[0]?.displayName ?? '')
     setBaseUrl('')
     setKeyValue('')
     setError(null)
     setBusy(false)
   }, [open, types])
+
+  // The display name follows the type until the user makes it their own: an
+  // empty field, or one still holding the outgoing type's name, is ours to
+  // overwrite. Clearing the field opts back into the default.
+  function handleTypeChange(next: string) {
+    const outgoingDefault = types.find((t) => t.id === type)?.displayName ?? ''
+    if (displayName === '' || displayName === outgoingDefault) {
+      setDisplayName(types.find((t) => t.id === next)?.displayName ?? '')
+    }
+    setType(next)
+  }
 
   async function handleSubmit() {
     setBusy(true)
@@ -54,7 +65,7 @@ export function AddProviderModal({
       <ProviderFields
         types={types}
         type={type}
-        setType={setType}
+        setType={handleTypeChange}
         displayName={displayName}
         setDisplayName={setDisplayName}
         baseUrl={baseUrl}
