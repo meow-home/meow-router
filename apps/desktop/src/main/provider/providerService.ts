@@ -114,7 +114,11 @@ export class ProviderService {
       signal: new AbortController().signal,
       requestId: randomUUID()
     })
+    // Safe upsert: preserve the user's enabled/disabled choice, only refresh metadata.
+    const present: Array<{ providerModelId: string }> = []
     for (const m of models) {
+      present.push({ providerModelId: m.providerModelId })
+      const existing = this.modelRepo.findByProviderModel(id, m.providerModelId)
       this.modelRepo.upsertByProviderModel({
         provider_id: id,
         provider_model_id: m.providerModelId,
@@ -122,9 +126,18 @@ export class ProviderService {
         context_window: m.contextWindow ?? null,
         input_price: m.inputPrice ?? null,
         output_price: m.outputPrice ?? null,
-        capabilities_json: JSON.stringify(m.capabilities)
+        capabilities_json: JSON.stringify(m.capabilities),
+        enabled: existing?.enabled ?? true
       })
     }
+
+    // Anything under this provider not in the API response becomes stale.
+    for (const row of this.modelRepo.listByProvider(id)) {
+      if (!present.some((p) => p.providerModelId === row.provider_model_id)) {
+        this.modelRepo.update(row.id, { stale: true })
+      }
+    }
+
     return models
   }
 
