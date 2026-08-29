@@ -34,6 +34,9 @@ export interface WindowApi {
   gatewayStop(): Promise<GatewayStatus>
   gatewayGetConfig(): Promise<GatewayConfigRow>
   gatewaySaveConfig(cfg: NewGatewayConfig): Promise<GatewayConfigRow>
+  gatewayGetKeyInfo(): Promise<GatewayKeyInfo>
+  gatewayCopyKey(): Promise<void>
+  gatewayRegenerateKey(): Promise<GatewayKeyInfo>
   usageDashboardTotals(): Promise<DashboardTotals>
   usageListRecent(limit: number): Promise<RequestUsageRow[]>
   ping(): Promise<PingResult>
@@ -68,7 +71,10 @@ export const IPC_CHANNELS = {
     start: 'gateway:start',
     stop: 'gateway:stop',
     getConfig: 'gateway:get-config',
-    saveConfig: 'gateway:save-config'
+    saveConfig: 'gateway:save-config',
+    getKeyInfo: 'gateway:get-key-info',
+    copyKey: 'gateway:copy-key',
+    regenerateKey: 'gateway:regenerate-key'
   },
   usage: {
     dashboardTotals: 'usage:dashboard-totals',
@@ -115,6 +121,13 @@ export interface GatewayStatus {
   running: boolean
   host: string
   port: number
+}
+
+// What the renderer is allowed to know about the gateway key. The raw key is
+// never part of this type — see docs/SECURITY.md.
+export interface GatewayKeyInfo {
+  masked: string
+  present: boolean
 }
 
 

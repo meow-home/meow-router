@@ -147,3 +147,12 @@ describe('isValidModelPatch', () => {
     expect(isValidModelPatch({ enabled: 1 })).toBe(false)
   })
 })
+
+describe('gateway key IPC contract', () => {
+  it('declares the three key channels', async () => {
+    const { IPC_CHANNELS } = await import('../../shared/ipc')
+    expect(IPC_CHANNELS.gateway.getKeyInfo).toBe('gateway:get-key-info')
+    expect(IPC_CHANNELS.gateway.copyKey).toBe('gateway:copy-key')
+    expect(IPC_CHANNELS.gateway.regenerateKey).toBe('gateway:regenerate-key')
+  })
+})

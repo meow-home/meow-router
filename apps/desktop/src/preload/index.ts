@@ -9,6 +9,7 @@ import {
   type ProviderWithCredential,
   type ProviderTypeDescriptor,
   type GatewayStatus,
+  type GatewayKeyInfo,
   type IpcResult,
   type DashboardTotals
 } from '../shared/ipc'
@@ -54,6 +55,9 @@ const api: WindowApi = {
   gatewayStop: () => invoke<GatewayStatus>(IPC_CHANNELS.gateway.stop),
   gatewayGetConfig: () => invoke<GatewayConfigRow>(IPC_CHANNELS.gateway.getConfig),
   gatewaySaveConfig: (cfg: NewGatewayConfig) => invoke<GatewayConfigRow>(IPC_CHANNELS.gateway.saveConfig, cfg),
+  gatewayGetKeyInfo: () => invoke<GatewayKeyInfo>(IPC_CHANNELS.gateway.getKeyInfo),
+  gatewayCopyKey: () => invoke<void>(IPC_CHANNELS.gateway.copyKey),
+  gatewayRegenerateKey: () => invoke<GatewayKeyInfo>(IPC_CHANNELS.gateway.regenerateKey),
   usageDashboardTotals: () => invoke<DashboardTotals>(IPC_CHANNELS.usage.dashboardTotals),
   usageListRecent: (limit) => invoke<RequestUsageRow[]>(IPC_CHANNELS.usage.listRecent, limit),
   listVirtualModels: () => invoke<VirtualModelRow[]>(IPC_CHANNELS.virtualModel.list),

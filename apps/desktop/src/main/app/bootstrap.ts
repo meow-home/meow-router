@@ -6,7 +6,7 @@
 //
 // The gateway binds to 127.0.0.1 on the configured port (default 8317).
 
-import { app, ipcMain, safeStorage } from 'electron'
+import { app, ipcMain, safeStorage, clipboard } from 'electron'
 import { join } from 'node:path'
 import { openDatabase, closeDatabase, type PersistedConnection } from '../database/connection'
 import {
@@ -25,6 +25,13 @@ import { ProviderRegistry, ProviderError, type CredentialCheckResult } from '@me
 import { createOpenAICompatibleAdapter } from '@meow-gateway/provider-openai'
 import { createDeepSeekAdapter } from '@meow-gateway/provider-deepseek'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
+import {
+  GATEWAY_KEY_REF,
+  ensureGatewayKey,
+  regenerateGatewayKey,
+  maskGatewayKey
+} from '../gateway/gatewayKey'
+import { createAuthPolicyCache, type AuthPolicyCache } from '../gateway/authPolicyCache'
 import type { GatewayDependencies } from '../gateway/types'
 import { VirtualModelService } from '../gateway/virtualModelService'
 import { UsageService } from '../gateway/usageService'
@@ -37,6 +44,7 @@ import {
   type ProviderTypeDescriptor,
   type ProviderWithCredential,
   type GatewayStatus,
+  type GatewayKeyInfo,
   type IpcResult
 } from '../../shared/ipc'
 import type {
@@ -85,12 +93,31 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   const usage = new UsageService(usageRepo, modelRepo)
   const providerService = new ProviderService(providerRepo, accountRepo, modelRepo, credentials, registry)
 
+  // A key must exist before the gateway can ever be started, so the Gateway
+  // view has something to show on a fresh install. A credential store that
+  // cannot be written (safeStorage unavailable) must not stop the app from
+  // launching: the gateway then fails closed on every request and the Gateway
+  // view reports the unreadable key. See the design spec, section 9.
+  try {
+    await ensureGatewayKey(credentials)
+  } catch (err) {
+    console.error('gateway key unavailable', err instanceof Error ? err.message : String(err))
+  }
+
+  const authPolicy = createAuthPolicyCache({
+    isAuthEnabled: () => configRepo.get().auth_enabled,
+    // Swallow to null so an unreadable store fails closed with 401 rather than
+    // surfacing a 500 from deep inside the request path.
+    readKey: () => credentials.getCredential(GATEWAY_KEY_REF).catch(() => null)
+  })
+
   const deps: GatewayDependencies = {
     registry,
     getCredential: (ref) => credentials.getCredential(ref),
     resolveModel: (id) => virtualModels.resolveModel(id),
     listModels: () => virtualModels.listModels(),
     recordUsage: (u) => usage.recordUsage(u),
+    getAuthPolicy: () => authPolicy.get(),
     logger: console // Electron main: minimal console logger
   }
 
@@ -110,7 +137,9 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     usage,
     usageRepo,
     configRepo,
-    gateway
+    gateway,
+    credentials,
+    authPolicy
   })
 
   // Guard against Electron not providing safeStorage in some dev contexts.
@@ -143,10 +172,12 @@ interface IpcHandlers {
   usageRepo: UsageRepository
   configRepo: GatewayConfigRepository
   gateway: GatewayServer
+  credentials: CredentialService
+  authPolicy: AuthPolicyCache
 }
 
 function registerIpcHandlers(handlers: IpcHandlers): void {
-  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway } = handlers
+  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway, credentials, authPolicy } = handlers
 
   // --- Virtual-model CRUD (unchanged) --------------------------------------
   ipcMain.handle(IPC_CHANNELS.virtualModel.list, async (): Promise<IpcResult<VirtualModelRow[]>> => {
@@ -281,7 +312,42 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
 
   ipcMain.handle(IPC_CHANNELS.gateway.saveConfig, async (_e, cfg: NewGatewayConfig): Promise<IpcResult<GatewayConfigRow>> => {
     if (!isValidGatewayConfig(cfg)) return badRequest('Invalid gateway config.', 'INVALID_GATEWAY')
-    return wrap(() => configRepo.save(cfg))
+    return wrap(() => {
+      const saved = configRepo.save(cfg)
+      authPolicy.invalidate()
+      return saved
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.gateway.getKeyInfo, async (): Promise<IpcResult<GatewayKeyInfo>> => {
+    return wrap(async () => {
+      // An unreadable store is reported as an absent key, not an IPC failure —
+      // the view has a branch for that and the gateway is already failing closed.
+      let key: string | null = null
+      try {
+        key = await credentials.getCredential(GATEWAY_KEY_REF)
+      } catch {
+        key = null
+      }
+      return { masked: maskGatewayKey(key), present: key !== null }
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.gateway.copyKey, async (): Promise<IpcResult<void>> => {
+    return wrap(async () => {
+      const key = await credentials.getCredential(GATEWAY_KEY_REF)
+      if (!key) throw new Error('No gateway key is stored.')
+      // The raw key goes straight to the clipboard; it never returns to the renderer.
+      clipboard.writeText(key)
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.gateway.regenerateKey, async (): Promise<IpcResult<GatewayKeyInfo>> => {
+    return wrap(async () => {
+      const key = await regenerateGatewayKey(credentials)
+      authPolicy.invalidate()
+      return { masked: maskGatewayKey(key), present: true }
+    })
   })
 
   // --- Usage ----------------------------------------------------------------
