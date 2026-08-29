@@ -82,8 +82,8 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       if (!auth.ok) {
         res.writeHead(auth.status, { 'content-type': 'application/json' })
         res.end(JSON.stringify(auth.body))
-        // Path only: never the header, never the key.
-        logger.warn('unauthorized', { requestId, path: url.pathname })
+        // Path and reason only: never the header, never the key.
+        logger.warn('unauthorized', { requestId, path: url.pathname, reason: auth.reason })
         return
       }
 

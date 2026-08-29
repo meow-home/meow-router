@@ -19,7 +19,17 @@ export interface AuthRequest {
   authorization: string | undefined
 }
 
-export type AuthOutcome = { ok: true } | { ok: false; status: 401; body: GatewayErrorBody }
+// Why a request was rejected. For the gateway log only — the client-facing body
+// stays uniform so a caller cannot probe for which half of the check it failed.
+export type AuthFailure =
+  | 'missing_header'
+  | 'unsupported_scheme'
+  | 'no_key_configured'
+  | 'key_mismatch'
+
+export type AuthOutcome =
+  | { ok: true }
+  | { ok: false; status: 401; reason: AuthFailure; body: GatewayErrorBody }
 
 // The gateway's own auth failure. Distinct from PROVIDER_AUTH_FAILED, which
 // means an upstream provider rejected our credentials — a different fix for
@@ -49,15 +59,20 @@ function bearerToken(authorization: string | undefined): string | null {
   return token.length > 0 ? token : null
 }
 
+function reject(reason: AuthFailure): AuthOutcome {
+  return { ok: false, status: 401, reason, body: AUTH_REQUIRED }
+}
+
 export function checkAuth(req: AuthRequest, policy: AuthPolicy): AuthOutcome {
   if (!policy.enabled) return { ok: true }
   // A health check that needs a key stops being a health check.
   if (req.method === 'GET' && req.pathname === '/health') return { ok: true }
 
-  const reject: AuthOutcome = { ok: false, status: 401, body: AUTH_REQUIRED }
-  if (!policy.key) return reject
+  if (!policy.key) return reject('no_key_configured')
 
+  if (!req.authorization) return reject('missing_header')
   const token = bearerToken(req.authorization)
-  if (!token) return reject
-  return safeEqual(token, policy.key) ? { ok: true } : reject
+  if (!token) return reject('unsupported_scheme')
+
+  return safeEqual(token, policy.key) ? { ok: true } : reject('key_mismatch')
 }

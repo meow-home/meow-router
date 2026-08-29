@@ -50,6 +50,31 @@ describe('checkAuth', () => {
     expect(out.ok).toBe(false)
   })
 
+  it('names why it rejected, for the gateway log', () => {
+    const cases: Array<[string | undefined, string]> = [
+      [undefined, 'missing_header'],
+      [`Basic ${KEY}`, 'unsupported_scheme'],
+      ['Bearer wrong', 'key_mismatch']
+    ]
+    for (const [header, reason] of cases) {
+      const out = checkAuth(req(header), on)
+      if (out.ok) throw new Error(`expected rejection for ${reason}`)
+      expect(out.reason).toBe(reason)
+    }
+  })
+
+  it('distinguishes an unconfigured key from a wrong one', () => {
+    const out = checkAuth(req(`Bearer ${KEY}`), { enabled: true, key: null })
+    if (out.ok) throw new Error('expected rejection')
+    expect(out.reason).toBe('no_key_configured')
+  })
+
+  it('keeps the reason out of the client-facing body', () => {
+    const out = checkAuth(req(), on)
+    if (out.ok) throw new Error('expected rejection')
+    expect(JSON.stringify(out.body)).not.toContain('missing_header')
+  })
+
   it('never echoes the expected key in the error body', () => {
     const out = checkAuth(req('Bearer wrong'), on)
     if (out.ok) throw new Error('expected rejection')
