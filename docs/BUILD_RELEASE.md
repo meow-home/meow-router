@@ -65,7 +65,19 @@ installers are named by the tagged version.
 Artifacts are produced per-OS (matrix build): NSIS `.exe` on Windows, `.dmg` on
 macOS, and AppImage/`.deb` on Linux. `--publish never` keeps `electron-builder`
 from pushing to a release provider; the GitHub Release is created by
-`softprops/action-gh-release` with auto-generated release notes.
+the `gh` CLI (preinstalled on GitHub-hosted runners) with auto-generated release
+notes. If a release for the tag already exists (e.g. after a failed or partial
+run) it is deleted first, so a clean release is created with the full set of
+installers.
+
+### Re-running a release
+
+The release workflow can be re-run for an existing tag from the Actions tab:
+
+1. Go to **Actions** → **Release** → **Run workflow**.
+2. Enter the tag (e.g. `v0.1.1`) and run it.
+3. The workflow checks out that exact tag and re-creates the release with all
+   installers, replacing any partial/stale assets from a previous run.
 
 Artifact names use a snake_case convention via the electron-builder
 `artifactName`/`executableName` macros, e.g. `Meow_gateway_1.2.3_x64.exe`
