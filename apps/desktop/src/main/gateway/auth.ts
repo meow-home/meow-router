@@ -24,6 +24,7 @@ export interface AuthRequest {
 export type AuthFailure =
   | 'missing_header'
   | 'unsupported_scheme'
+  | 'empty_token'
   | 'no_key_configured'
   | 'key_mismatch'
 
@@ -51,12 +52,11 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb)
 }
 
-function bearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null
+// Distinguishes the two ways a header can carry no usable token: the wrong
+// scheme, and the right scheme with nothing after it.
+function bearerToken(authorization: string): { scheme: string; token: string } {
   const [scheme, ...rest] = authorization.trim().split(/\s+/)
-  if (scheme.toLowerCase() !== 'bearer') return null
-  const token = rest.join(' ')
-  return token.length > 0 ? token : null
+  return { scheme: scheme.toLowerCase(), token: rest.join(' ') }
 }
 
 function reject(reason: AuthFailure): AuthOutcome {
@@ -71,8 +71,9 @@ export function checkAuth(req: AuthRequest, policy: AuthPolicy): AuthOutcome {
   if (!policy.key) return reject('no_key_configured')
 
   if (!req.authorization) return reject('missing_header')
-  const token = bearerToken(req.authorization)
-  if (!token) return reject('unsupported_scheme')
+  const { scheme, token } = bearerToken(req.authorization)
+  if (scheme !== 'bearer') return reject('unsupported_scheme')
+  if (token.length === 0) return reject('empty_token')
 
   return safeEqual(token, policy.key) ? { ok: true } : reject('key_mismatch')
 }

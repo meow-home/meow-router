@@ -63,6 +63,22 @@ describe('checkAuth', () => {
     }
   })
 
+  it('calls an empty bearer token empty, not an unsupported scheme', () => {
+    // A client building `Bearer ${apiKey}` from an unset field sends the scheme
+    // with nothing after it. Blaming the scheme sends the reader the wrong way.
+    for (const header of ['Bearer ', 'Bearer', 'Bearer   ']) {
+      const out = checkAuth(req(header), on)
+      if (out.ok) throw new Error(`expected rejection for ${JSON.stringify(header)}`)
+      expect(out.reason).toBe('empty_token')
+    }
+  })
+
+  it('reports the literal string undefined as a mismatch, not an empty token', () => {
+    const out = checkAuth(req('Bearer undefined'), on)
+    if (out.ok) throw new Error('expected rejection')
+    expect(out.reason).toBe('key_mismatch')
+  })
+
   it('distinguishes an unconfigured key from a wrong one', () => {
     const out = checkAuth(req(`Bearer ${KEY}`), { enabled: true, key: null })
     if (out.ok) throw new Error('expected rejection')
