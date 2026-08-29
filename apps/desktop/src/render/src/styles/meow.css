@@ -119,7 +119,8 @@ code, .mono { font-family: var(--font-mono); }
 .app-main {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-3);
+  /* Padding is provided by .view so the page header can be pinned flush to the
+     top of the scroll viewport (see .view-header) without a scroll jump. */
   animation: meow-rise 260ms ease-out both;
 }
 
@@ -184,12 +185,33 @@ code, .mono { font-family: var(--font-mono); }
 .rail__status { margin-bottom: 6px; }
 
 /* ---------- view frame ---------- */
-.view { display: flex; flex-direction: column; gap: var(--space-3); max-width: 1080px; margin: 0 auto; width: 100%; }
+.view {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  max-width: 1080px; margin: 0 auto; width: 100%;
+  /* Padding lives here (not on .app-main) so the header can be pinned flush to
+     the top of the scroll viewport. Auto-only left/right margins keep the frame
+     centred; the scroll container supplies the global vertical padding. */
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}
 .view-title { font-family: var(--font-display); font-size: var(--fs-4); font-weight: var(--fw-semibold); letter-spacing: 0.01em; color: var(--text-strong); }
 .view-subtitle { font-size: var(--fs-1); color: var(--text-dim); margin-top: 2px; }
 .view-header {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3);
   padding-bottom: var(--space-3); border-bottom: 1px solid var(--hairline); border-radius: 0;
+  /* Sticky header: it stays pinned to the top of .app-main (the scroll
+     container) while the rest of the page scrolls beneath it. Negative top
+     margin offsets the .view top padding so the header reaches the very top of
+     the viewport. A translucent, blurred background keeps the body's radial
+     glow visible while hiding content that scrolls underneath. */
+  position: sticky; top: 0; z-index: 10;
+  margin-top: calc(var(--space-3) * -1);
+  padding-top: var(--space-3);
+  background: color-mix(in srgb, var(--bg-panel) 78%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 .view-actions { display: flex; gap: var(--space-1); align-items: center; }
 
