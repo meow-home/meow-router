@@ -32,13 +32,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Fetch full history so the "tag is on main" ancestor check works.
-          fetch-depth: 0
-
       # Resolve the tag name: from the push tag, or from the manual input.
+      # This must run before checkout so the exact tag can be checked out.
       - name: Resolve tag
         id: tag
         shell: bash
@@ -51,15 +46,13 @@ jobs:
           echo "Resolved tag: $tag"
 
       # Check out the exact tag commit so typecheck/lint/test/package all run on
-      # the released code (not main HEAD), and fetch the tag + main so the
-      # ancestor check below works regardless of trigger.
-      - name: Checkout tag commit
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        shell: bash
-        run: |
-          git fetch --depth=1 origin "$TAG" origin/main
-          git checkout --detach "$TAG"
+      # the released code (not main HEAD). fetch-depth: 0 grabs full history so
+      # the ancestry check below can compare against origin/main.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
 
       # Only release from tags that land on main, so we don't publish from
       # feature branches that happen to carry a v* tag.
@@ -68,7 +61,10 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         shell: bash
         run: |
-          tag_sha="$(git rev-list -n1 "$TAG")"
+          # Fetch the tip of main as a proper refspec so origin/main exists even
+          # when we checked out a tag (not a branch) above.
+          git fetch --depth=1 origin main
+          tag_sha="$(git rev-parse "$TAG^{commit}")"
           main_sha="$(git rev-parse origin/main)"
           if ! git merge-base --is-ancestor "$tag_sha" "$main_sha"; then
             echo "Tag $TAG does not point into origin/main; aborting release."
@@ -76,12 +72,12 @@ jobs:
           fi
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: pnpm
