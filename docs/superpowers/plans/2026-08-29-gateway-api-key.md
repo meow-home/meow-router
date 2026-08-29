@@ -799,12 +799,21 @@ Before `const deps: GatewayDependencies` (`:88`):
 
 ```ts
   // A key must exist before the gateway can ever be started, so the Gateway
-  // view has something to show on a fresh install.
-  await ensureGatewayKey(credentials)
+  // view has something to show on a fresh install. A credential store that
+  // cannot be written (safeStorage unavailable) must not stop the app from
+  // launching: the gateway then fails closed on every request and the Gateway
+  // view reports the unreadable key. See spec section 9.
+  try {
+    await ensureGatewayKey(credentials)
+  } catch (err) {
+    console.error('gateway key unavailable', err instanceof Error ? err.message : String(err))
+  }
 
   const authPolicy = createAuthPolicyCache({
     isAuthEnabled: () => configRepo.get().auth_enabled,
-    readKey: () => credentials.getCredential(GATEWAY_KEY_REF)
+    // Swallow to null so an unreadable store fails closed with 401 rather than
+    // surfacing a 500 from deep inside the request path.
+    readKey: () => credentials.getCredential(GATEWAY_KEY_REF).catch(() => null)
   })
 ```
 
@@ -830,7 +839,14 @@ Invalidate on save — replace the `saveConfig` handler (`:282`):
 
   ipcMain.handle(IPC_CHANNELS.gateway.getKeyInfo, async (): Promise<IpcResult<GatewayKeyInfo>> => {
     return wrap(async () => {
-      const key = await credentials.getCredential(GATEWAY_KEY_REF)
+      // An unreadable store is reported as an absent key, not an IPC failure —
+      // the view has a branch for that and the gateway is already failing closed.
+      let key: string | null = null
+      try {
+        key = await credentials.getCredential(GATEWAY_KEY_REF)
+      } catch {
+        key = null
+      }
       return { masked: maskGatewayKey(key), present: key !== null }
     })
   })
