@@ -14,7 +14,7 @@ import type { AccountRepository } from '../database/repositories/accountReposito
 import type { ModelRepository } from '../database/repositories/modelRepository'
 import type { CredentialService } from '../credentials/credentialService'
 import { ProviderError, assertSafeEndpoint, type ProviderRegistry, type ModelInfo, type CredentialCheckResult } from '@meow-gateway/provider-core'
-import type { ProviderRow } from '../database/types'
+import type { ProviderRow, ModelRow, NewModel } from '../database/types'
 import type { NewProviderInput, ProviderWithCredential, ProviderTypeDescriptor } from '../../shared/ipc'
 
 function credentialRefFor(providerId: string): string {
@@ -139,6 +139,23 @@ export class ProviderService {
     }
 
     return models
+  }
+
+  createModel(input: NewModel): ModelRow {
+    if (!this.providerRepo.findById(input.provider_id)) {
+      throw new ProviderError({ type: 'INVALID_INPUT', message: `Provider not found: ${input.provider_id}`, retryable: false })
+    }
+    return this.modelRepo.create(input)
+  }
+
+  updateModel(id: string, patch: Partial<Omit<NewModel, 'id'>>): ModelRow | undefined {
+    if (patch.provider_id !== undefined) {
+      throw new ProviderError({ type: 'INVALID_INPUT', message: 'Model provider_id cannot be changed after creation.', retryable: false })
+    }
+    if (!this.modelRepo.findById(id)) {
+      throw new ProviderError({ type: 'MODEL_NOT_FOUND', message: 'Model not found', retryable: false })
+    }
+    return this.modelRepo.update(id, patch)
   }
 
   providerTypes(): ProviderTypeDescriptor[] {

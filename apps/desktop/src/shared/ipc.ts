@@ -7,9 +7,10 @@ import type {
   ModelRow,
   GatewayConfigRow,
   RequestUsageRow,
-  NewGatewayConfig
+  NewGatewayConfig,
+  NewModel
 } from '../main/database/types'
-export type { NewGatewayConfig, ModelRow, VirtualModelRow, GatewayConfigRow, RequestUsageRow } from '../main/database/types'
+export type { NewGatewayConfig, ModelRow, NewModel, VirtualModelRow, GatewayConfigRow, RequestUsageRow } from '../main/database/types'
 import type { DashboardTotals } from '../main/database/repositories/usageRepository'
 export type { DashboardTotals } from '../main/database/repositories/usageRepository'
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
@@ -24,6 +25,8 @@ export interface WindowApi {
   discoverModels(id: string): Promise<ModelInfo[]>
   listProviderTypes(): Promise<ProviderTypeDescriptor[]>
   listModelsByProvider(providerId: string): Promise<ModelRow[]>
+  createModel(input: NewModel): Promise<ModelRow>
+  updateModel(id: string, patch: Partial<Omit<NewModel, 'id'>>): Promise<ModelRow>
   deleteModel(id: string): Promise<boolean>
   setModelEnabled(id: string, enabled: boolean): Promise<ModelRow>
   gatewayGetStatus(): Promise<GatewayStatus>
@@ -55,6 +58,8 @@ export const IPC_CHANNELS = {
   },
   model: {
     listByProvider: 'model:list-by-provider',
+    create: 'model:create',
+    update: 'model:update',
     delete: 'model:delete',
     setEnabled: 'model:set-enabled'
   },

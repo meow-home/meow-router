@@ -18,7 +18,8 @@ import type {
   ModelRow,
   GatewayConfigRow,
   RequestUsageRow,
-  NewGatewayConfig
+  NewGatewayConfig,
+  NewModel
 } from '../main/database/types'
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
 
@@ -44,6 +45,8 @@ const api: WindowApi = {
   discoverModels: (id) => invoke<ModelInfo[]>(IPC_CHANNELS.provider.discoverModels, id),
   listProviderTypes: () => invoke<ProviderTypeDescriptor[]>(IPC_CHANNELS.provider.types),
   listModelsByProvider: (providerId) => invoke<ModelRow[]>(IPC_CHANNELS.model.listByProvider, providerId),
+  createModel: (input: NewModel) => invoke<ModelRow>(IPC_CHANNELS.model.create, input),
+  updateModel: (id, patch) => invoke<ModelRow>(IPC_CHANNELS.model.update, id, patch),
   deleteModel: (id) => invoke<boolean>(IPC_CHANNELS.model.delete, id),
   setModelEnabled: (id, enabled) => invoke<ModelRow>(IPC_CHANNELS.model.setEnabled, id, enabled),
   gatewayGetStatus: () => invoke<GatewayStatus>(IPC_CHANNELS.gateway.getStatus),

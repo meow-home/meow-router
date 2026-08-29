@@ -44,7 +44,8 @@ import type {
   ProviderRow,
   ModelRow,
   GatewayConfigRow,
-  RequestUsageRow
+  RequestUsageRow,
+  NewModel
 } from '../database/types'
 import type { DashboardTotals } from '../database/repositories/usageRepository'
 import type { ModelInfo } from '@meow-gateway/provider-core'
@@ -231,6 +232,17 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
     return wrap(() => modelRepo.listByProvider(providerId))
   })
 
+  ipcMain.handle(IPC_CHANNELS.model.create, async (_e, input: NewModel): Promise<IpcResult<ModelRow>> => {
+    if (!isValidModelInput(input)) return badRequest('Invalid model input.', 'INVALID_MODEL')
+    return wrap(() => providerService.createModel(input))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.model.update, async (_e, id: string, patch: Record<string, unknown>): Promise<IpcResult<ModelRow>> => {
+    if (!isNonEmptyString(id) || !isObject(patch)) return badRequest('Invalid update arguments.', 'INVALID_MODEL')
+    if (patch['provider_id'] !== undefined) return badRequest('provider_id cannot be changed.', 'INVALID_MODEL')
+    return wrap(() => providerService.updateModel(id, patch as Partial<Omit<NewModel, 'id'>>) as ModelRow)
+  })
+
   ipcMain.handle(IPC_CHANNELS.model.delete, async (_e, id: string): Promise<IpcResult<boolean>> => {
     if (!isNonEmptyString(id)) return badRequest('`id` must be a non-empty string.', 'INVALID_MODEL')
     return wrap(() => modelRepo.delete(id))
@@ -295,6 +307,14 @@ function isSecret(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v.length <= 8192
 }
 
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0
+}
+
+function isNonNegativeNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0
+}
+
 function isValidVirtualModelInput(v: unknown): v is NewVirtualModelInput {
   if (!isObject(v)) return false
   if (v['id'] !== undefined && !isNonEmptyString(v['id'])) return false
@@ -304,6 +324,19 @@ function isValidVirtualModelInput(v: unknown): v is NewVirtualModelInput {
   if (v['routing_policy_id'] !== undefined && v['routing_policy_id'] !== null && !isNonEmptyString(v['routing_policy_id'])) {
     return false
   }
+  if (v['enabled'] !== undefined && typeof v['enabled'] !== 'boolean') return false
+  return true
+}
+
+function isValidModelInput(v: unknown): v is NewModel {
+  if (!isObject(v)) return false
+  if (!isNonEmptyString(v['provider_id'])) return false
+  if (!isNonEmptyString(v['provider_model_id'])) return false
+  if (!isNonEmptyString(v['display_name'])) return false
+  if (v['context_window'] !== undefined && v['context_window'] !== null && !isPositiveInt(v['context_window'])) return false
+  if (v['input_price'] !== undefined && v['input_price'] !== null && !isNonNegativeNumber(v['input_price'])) return false
+  if (v['output_price'] !== undefined && v['output_price'] !== null && !isNonNegativeNumber(v['output_price'])) return false
+  if (v['capabilities_json'] !== undefined && v['capabilities_json'] !== null && (!isNonEmptyString(v['capabilities_json']) || v['capabilities_json'].length > 4096)) return false
   if (v['enabled'] !== undefined && typeof v['enabled'] !== 'boolean') return false
   return true
 }

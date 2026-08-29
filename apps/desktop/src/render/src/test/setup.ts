@@ -12,6 +12,8 @@ Object.defineProperty(window, 'meowGateway', {
     discoverModels: vi.fn().mockResolvedValue([]),
     listProviderTypes: vi.fn().mockResolvedValue([]),
     listModelsByProvider: vi.fn().mockResolvedValue([]),
+    createModel: vi.fn().mockResolvedValue({ id: 'm', provider_id: '', provider_model_id: '', display_name: '', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false }),
+    updateModel: vi.fn().mockResolvedValue({ id: 'm', provider_id: '', provider_model_id: '', display_name: '', context_window: null, input_price: null, output_price: null, capabilities_json: null, enabled: true, discovered_at: '', stale: false }),
     deleteModel: vi.fn(),
     setModelEnabled: vi.fn(),
     gatewayGetStatus: vi.fn().mockResolvedValue({ running: true, host: '127.0.0.1', port: 8317 }),
