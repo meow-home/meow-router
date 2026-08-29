@@ -1,9 +1,37 @@
 // Narrow typed IPC contract shared between preload, main, and renderer.
 // Only non-sensitive, schema-validated payloads cross this boundary.
 
-import type { VirtualModelRow, ProviderRow } from '../main/database/types'
+import type {
+  VirtualModelRow,
+  ProviderRow,
+  ModelRow,
+  GatewayConfigRow,
+  RequestUsageRow,
+  NewGatewayConfig
+} from '../main/database/types'
+import type { DashboardTotals } from '../main/database/repositories/usageRepository'
+export type { DashboardTotals } from '../main/database/repositories/usageRepository'
+import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
 
 export interface WindowApi {
+  listProviders(): Promise<ProviderWithCredential[]>
+  createProvider(input: NewProviderInput): Promise<ProviderRow>
+  updateProvider(id: string, patch: Partial<Omit<ProviderRow, 'id' | 'created_at'>>): Promise<ProviderRow>
+  deleteProvider(id: string): Promise<boolean>
+  setProviderCredential(id: string, secret: string): Promise<void>
+  testProviderConnection(id: string): Promise<CredentialCheckResult>
+  discoverModels(id: string): Promise<ModelInfo[]>
+  listProviderTypes(): Promise<ProviderTypeDescriptor[]>
+  listModelsByProvider(providerId: string): Promise<ModelRow[]>
+  deleteModel(id: string): Promise<boolean>
+  setModelEnabled(id: string, enabled: boolean): Promise<ModelRow>
+  gatewayGetStatus(): Promise<GatewayStatus>
+  gatewayStart(): Promise<GatewayStatus>
+  gatewayStop(): Promise<GatewayStatus>
+  gatewayGetConfig(): Promise<GatewayConfigRow>
+  gatewaySaveConfig(cfg: NewGatewayConfig): Promise<GatewayConfigRow>
+  usageDashboardTotals(): Promise<DashboardTotals>
+  usageListRecent(limit: number): Promise<RequestUsageRow[]>
   ping(): Promise<PingResult>
   listVirtualModels(): Promise<VirtualModelRow[]>
   getVirtualModel(id: string): Promise<VirtualModelRow | null>
