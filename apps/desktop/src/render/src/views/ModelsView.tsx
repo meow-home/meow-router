@@ -79,7 +79,7 @@ function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: Mo
     <div style={{ border: '1px solid #2a3040', padding: 12, marginBottom: 12 }}>
       <label>
         Provider
-        <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+        <select value={providerId} onChange={(e) => setProviderId(e.target.value)} disabled={!!model}>
           {providers.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
         </select>
       </label>
@@ -172,7 +172,11 @@ export function ModelsView() {
 
   async function handleSaveModel(input: NewModel) {
     if (editTargetId) {
-      await window.meowGateway.updateModel(editTargetId, input)
+      // A model's provider is immutable after creation; strip provider_id from the patch
+      // so updateModel does not reject it with INVALID_INPUT.
+      const { provider_id: _providerId, ...patch } = input
+      void _providerId
+      await window.meowGateway.updateModel(editTargetId, patch)
     } else {
       await window.meowGateway.createModel(input)
     }

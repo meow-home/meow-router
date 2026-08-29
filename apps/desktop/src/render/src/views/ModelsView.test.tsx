@@ -45,4 +45,14 @@ describe('ModelsView', () => {
     await waitFor(() => expect(gw.discoverModels).toHaveBeenCalledWith('p1'))
     expect(await screen.findByText('stale')).toBeTruthy()
   })
+
+  it('edits a model', async () => {
+    gw.updateModel.mockResolvedValue({ id: 'm1', provider_id: 'p1', provider_model_id: 'deepseek-chat-v2', display_name: 'DeepSeek Chat', context_window: 64000, input_price: 0.1, output_price: 0.3, capabilities_json: '{}', enabled: true, discovered_at: '', stale: false })
+    render(<ModelsView />)
+    fireEvent.click(await screen.findByText('Edit'))
+    fireEvent.change(await screen.findByLabelText(/provider model id/i), { target: { value: 'deepseek-chat-v2' } })
+    fireEvent.click(await screen.findByText(/Save Model/i))
+    await waitFor(() => expect(gw.updateModel).toHaveBeenCalledWith('m1', expect.objectContaining({ provider_model_id: 'deepseek-chat-v2' })))
+    expect(gw.updateModel.mock.calls[0][1]).not.toHaveProperty('provider_id')
+  })
 })
