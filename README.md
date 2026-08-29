@@ -20,11 +20,14 @@ The primary consumer is a coding agent such as Meow Coding, OpenCode, Claude Cod
 ## Providers
 
 OpenAI-compatible providers can be added by choosing a provider type and typing
-a base URL. Presets include OpenAI, OpenRouter and Groq (remote endpoints).
-Ollama and LM Studio appear as presets in the provider picker, but they are NOT
-registered as runtime adapters in the current slice — the loopback SSRF guard
-remains enforced, so loopback endpoints stay blocked unless an explicit allow is
-added later.
+a base URL. Presets include OpenAI, OpenRouter and Groq (remote endpoints);
+DeepSeek and a generic "OpenAI-compatible" type are also available.
+
+Ollama and LM Studio are NOT currently available as selectable providers: their
+loopback endpoints (`http://127.0.0.1:11434/v1`, `http://127.0.0.1:1234/v1`) are
+blocked by the SSRF guard, and their presets are not wired into the runtime
+provider registry. They are possible/planned future presets but do not appear in
+the provider picker in this slice.
 
 ## Sync Models
 

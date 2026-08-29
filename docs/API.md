@@ -134,8 +134,8 @@ Provider-specific capabilities are represented internally and may be rejected ex
 
 Beyond the HTTP gateway, the desktop renderer talks to the Electron main process
 over a typed IPC bridge. Contract types live in `apps/desktop/src/shared/ipc.ts`
-and are re-exported as `@shared/ipc`. The preload exposes a single `window.api`
-object matching the `WindowApi` interface. All IPC payloads are schema-validated;
+and are re-exported as `@shared/ipc`. The preload exposes a single
+`window.meowGateway` object matching the `WindowApi` interface. All IPC payloads are schema-validated;
 only non-sensitive data crosses this boundary (credentials never do).
 
 ### Channels
@@ -159,6 +159,7 @@ existing model and returns the updated row. The patch type excludes `id`
 `NewModel` is originally defined in `apps/desktop/src/main/database/types.ts`
 and re-exported by `@shared/ipc`. Fields:
 
+- `id?: string` — optional, repository-generated (ignored on create)
 - `provider_id: string`
 - `provider_model_id: string`
 - `display_name: string`
