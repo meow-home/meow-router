@@ -88,6 +88,8 @@ RequestUsage
 - latency_ms
 - status
 - error_code nullable
+- error_message nullable
+- route_attempt
 - created_at
 ```
 

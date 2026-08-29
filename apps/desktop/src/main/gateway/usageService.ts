@@ -27,7 +27,8 @@ export class UsageService {
       estimated_cost: cost?.totalCost ?? null,
       latency_ms: usage.latencyMs,
       status: usage.status,
-      error_code: usage.errorCode ?? null
+      error_code: usage.errorCode ?? null,
+      error_message: usage.errorMessage ?? null
     })
   }
 

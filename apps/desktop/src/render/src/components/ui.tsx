@@ -95,10 +95,6 @@ export function Pill({
   )
 }
 
-export function Tag({ on = false, children }: { on?: boolean; children: ReactNode }) {
-  return <span className={classNames('tag', on ? 'tag--on' : 'tag--off')}>{children}</span>
-}
-
 export function Field({
   label,
   children,
@@ -150,12 +146,17 @@ export function Select({
 }) {
   const includesPlaceholder = placeholder != null
 
+  // Never set both `value` and `defaultValue`: a controlled select must not also
+  // receive a default, or React warns. We default to `''` only in uncontrolled
+  // mode (no `value`) so a placeholder shows as the initial empty option.
+  const isControlled = value !== undefined
+
   return (
     <select
       className={classNames('input', className)}
       name={name}
       value={value}
-      defaultValue={defaultValue !== undefined ? defaultValue : includesPlaceholder ? '' : undefined}
+      defaultValue={isControlled ? undefined : defaultValue !== undefined ? defaultValue : includesPlaceholder ? '' : undefined}
       onChange={(e) => onChange?.(e.target.value)}
       disabled={disabled}
       required={required}

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, VirtualModelRow } from '@shared/ipc'
-import { ViewHeader, Button, Field, ErrorBanner, EmptyState, Pill, Panel, Select, Input, classNames } from '../components/ui'
+import { ViewHeader, Button, ErrorBanner, EmptyState, Pill, ConfirmDialog, classNames } from '../components/ui'
+import { VirtualModelModal } from '../components/VirtualModelModal'
 
 export function VirtualModelsView() {
   const [vms, setVms] = useState<VirtualModelRow[]>([])
   const [providers, setProviders] = useState<ProviderWithCredential[]>([])
-  const [showForm, setShowForm] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<VirtualModelRow | null>(null)
+  const [deleting, setDeleting] = useState<VirtualModelRow | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = async () => {
@@ -15,24 +18,32 @@ export function VirtualModelsView() {
 
   useEffect(() => { refresh().catch((e) => setError(String(e))) }, [])
 
-  async function handleAdd(ev: React.FormEvent<HTMLFormElement>) {
-    ev.preventDefault()
-    const fd = new FormData(ev.currentTarget)
-    try {
-      await window.meowGateway.createVirtualModel({
-        display_name: String(fd.get('display_name')),
-        provider_id: String(fd.get('provider_id')),
-        provider_model_id: String(fd.get('provider_model_id')),
-        routing_policy_id: null
-      })
-      setShowForm(false)
-      await refresh()
-    } catch (e) { setError(String(e)) }
+  function handleNew() {
+    setEditing(null)
+    setModalOpen(true)
   }
 
-  async function handleDelete(vm: VirtualModelRow) {
-    await window.meowGateway.deleteVirtualModel(vm.id)
+  function handleEdit(vm: VirtualModelRow) {
+    setEditing(vm)
+    setModalOpen(true)
+  }
+
+  async function handleSaved() {
+    setModalOpen(false)
+    setEditing(null)
     await refresh()
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleting) return
+    try {
+      await window.meowGateway.deleteVirtualModel(deleting.id)
+      setDeleting(null)
+      await refresh()
+    } catch (e) {
+      setError(String(e))
+      setDeleting(null)
+    }
   }
 
   async function handleToggle(vm: VirtualModelRow) {
@@ -45,36 +56,32 @@ export function VirtualModelsView() {
   return (
     <div className="view">
       <ViewHeader title="Virtual Models" subtitle="Public IDs your coding agent calls — mapped to a concrete provider model.">
-        <Button variant="primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Close' : '+ New Virtual Model'}
+        <Button variant="primary" onClick={handleNew}>
+          + New Virtual Model
         </Button>
       </ViewHeader>
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      {showForm && (
-        <Panel title="Map a new virtual model">
-          <form onSubmit={handleAdd}>
-            <div className="form-grid">
-              <Field label="Public model name">
-                <Input name="display_name" required aria-label="display name" placeholder="meow-coding" />
-              </Field>
-              <Field label="Provider">
-                <Select name="provider_id" required options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
-              </Field>
-              <Field label="Provider model id">
-                <Input name="provider_model_id" required aria-label="provider model id" placeholder="deepseek-chat" />
-              </Field>
-            </div>
-            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 8 }}>
-              <Button type="submit" variant="primary">Save</Button>
-              <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-            </div>
-          </form>
-        </Panel>
-      )}
+      <VirtualModelModal
+        open={modalOpen}
+        providers={providers}
+        initial={editing}
+        onClose={() => { setModalOpen(false); setEditing(null) }}
+        onSaved={handleSaved}
+      />
 
-      {vms.length === 0 && !showForm && (
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete virtual model"
+        message={`Delete "${deleting?.display_name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
+
+      {vms.length === 0 && !modalOpen && (
         <EmptyState icon="↦" title="No virtual models" hint="Map a stable public name to a provider model." />
       )}
 
@@ -95,8 +102,9 @@ export function VirtualModelsView() {
                 </div>
               </div>
               <div className="view-actions">
+                <Button onClick={() => handleEdit(vm)}>Edit</Button>
                 <Button onClick={() => handleToggle(vm)}>{vm.enabled ? 'Disable' : 'Enable'}</Button>
-                <Button variant="danger" onClick={() => handleDelete(vm)}>Delete</Button>
+                <Button variant="danger" onClick={() => setDeleting(vm)}>Delete</Button>
               </div>
             </div>
           </div>

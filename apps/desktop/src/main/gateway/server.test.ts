@@ -177,6 +177,14 @@ describe('gateway server (T301)', () => {
     await server.stop()
     await expect(fetch(`http://${addr.host}:${addr.port}/health`)).rejects.toThrow()
   })
+  it('reports stopped status and can be restarted', async () => {
+    await server.stop()
+    expect(server.listener()).toBeUndefined()
+    const restarted = await server.start()
+    expect(server.listener()).toBeDefined()
+    expect(restarted.port).toBeGreaterThan(0)
+    await server.stop()
+  })
 
   it('occupied port produces a clear error', async () => {
     const blocker = createGatewayServer(harness.deps, { port: addr.port })

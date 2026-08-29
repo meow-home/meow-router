@@ -1,4 +1,5 @@
 import logo from '../assets/logo.png'
+import { Pill } from './ui'
 
 export type View = 'providers' | 'models' | 'virtualmodels' | 'gateway' | 'dashboard'
 
@@ -10,7 +11,15 @@ const items: Array<{ id: View; label: string; index: string }> = [
   { id: 'dashboard', label: 'Usage', index: '05' },
 ]
 
-export function Sidebar({ active, onSelect }: { active: View; onSelect: (v: View) => void }) {
+export function Sidebar({
+  active,
+  onSelect,
+  running,
+}: {
+  active: View
+  onSelect: (v: View) => void
+  running: boolean
+}) {
   return (
     <aside className="rail">
       <div className="rail__brand">
@@ -36,6 +45,9 @@ export function Sidebar({ active, onSelect }: { active: View; onSelect: (v: View
       </nav>
 
       <div className="rail__footer">
+        <div className="rail__status">
+          <Pill tone={running ? 'live' : 'muted'}>{running ? 'gateway up' : 'gateway down'}</Pill>
+        </div>
         <span>endpoint 127.0.0.1</span>
         <span style={{ color: 'var(--text-faint)' }}>port 8317 / v1</span>
       </div>

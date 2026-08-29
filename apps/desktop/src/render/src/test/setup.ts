@@ -26,6 +26,7 @@ Object.defineProperty(window, 'meowGateway', {
     gatewayRegenerateKey: vi.fn().mockResolvedValue({ masked: 'mgw_•••••••••••beef', present: true }),
     usageDashboardTotals: vi.fn().mockResolvedValue({ totalRequests: 0, totalTokens: 0, totalCost: null, successRequests: 0, errorRequests: 0, abortedRequests: 0, byProvider: [] }),
     usageListRecent: vi.fn().mockResolvedValue([]),
+    usageListPage: vi.fn().mockResolvedValue({ rows: [], total: 0 }),
     listVirtualModels: vi.fn().mockResolvedValue([]),
     getVirtualModel: vi.fn(),
     createVirtualModel: vi.fn(),

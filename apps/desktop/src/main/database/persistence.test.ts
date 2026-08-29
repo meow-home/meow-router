@@ -39,7 +39,7 @@ describe('file-backed database persistence', () => {
 
       // Re-open did not duplicate any migration (idempotent).
       const rows = db2.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]
-      expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+      expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7])
     } finally {
       closeDatabase(db2)
     }
@@ -62,7 +62,7 @@ describe('file-backed database persistence', () => {
         const rows = reopened.prepare('SELECT version FROM schema_migrations').all() as {
           version: number
         }[]
-        expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+        expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7])
       } finally {
         closeDatabase(reopened)
       }

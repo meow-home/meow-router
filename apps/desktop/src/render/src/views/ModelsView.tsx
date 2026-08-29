@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
-import { ViewHeader, Button, Field, EmptyState, Tag, Panel, Select, Input, Checkbox } from '../components/ui'
+import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -41,6 +41,7 @@ const capabilityLabels: Array<{ key: keyof Capabilities; label: string }> = [
 ]
 
 interface ModelFormProps {
+  open: boolean
   providers: ProviderWithCredential[]
   defaultProviderId: string
   model: ModelRow | null
@@ -48,7 +49,7 @@ interface ModelFormProps {
   onCancel: () => void
 }
 
-function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: ModelFormProps) {
+function ModelForm({ open, providers, defaultProviderId, model, onSave, onCancel }: ModelFormProps) {
   const [providerId, setProviderId] = useState(model?.provider_id ?? defaultProviderId)
   const [providerModelId, setProviderModelId] = useState(model?.provider_model_id ?? '')
   const [displayName, setDisplayName] = useState(model?.display_name ?? '')
@@ -57,6 +58,23 @@ function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: Mo
   const [outputPrice, setOutputPrice] = useState(model?.output_price?.toString() ?? '')
   const [capabilities, setCapabilities] = useState<Capabilities>(() => parseCapabilities(model?.capabilities_json ?? null))
   const [enabled, setEnabled] = useState(model?.enabled ?? true)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  // Re-initialise whenever the dialog opens (add) or the edit target changes.
+  useEffect(() => {
+    if (!open) return
+    setProviderId(model?.provider_id ?? defaultProviderId)
+    setProviderModelId(model?.provider_model_id ?? '')
+    setDisplayName(model?.display_name ?? '')
+    setContextWindow(model?.context_window?.toString() ?? '')
+    setInputPrice(model?.input_price?.toString() ?? '')
+    setOutputPrice(model?.output_price?.toString() ?? '')
+    setCapabilities(parseCapabilities(model?.capabilities_json ?? null))
+    setEnabled(model?.enabled ?? true)
+    setError(null)
+    setBusy(false)
+  }, [open, model, defaultProviderId])
 
   function toggleCapability(key: keyof Capabilities) {
     setCapabilities((c) => ({ ...c, [key]: !c[key] }))
@@ -73,11 +91,29 @@ function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: Mo
       capabilities_json: JSON.stringify(capabilities),
       enabled,
     }
-    await onSave(input)
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave(input)
+    } catch (e) {
+      setError(String(e))
+      setBusy(false)
+    }
   }
 
   return (
-    <Panel title={model ? 'Edit model' : 'New model'}>
+    <Modal
+      open={open}
+      title={model ? 'Edit Model' : 'Add Model'}
+      width={520}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} disabled={busy}>{busy ? 'Saving…' : 'Save Model'}</Button>
+        </>
+      }
+    >
       <div className="form-grid">
         <Field label="Provider">
           <Select value={providerId} onChange={setProviderId} disabled={!!model} options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
@@ -116,11 +152,8 @@ function ModelForm({ providers, defaultProviderId, model, onSave, onCancel }: Mo
         </Checkbox>
       </div>
 
-      <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 8 }}>
-        <Button variant="primary" onClick={handleSave}>Save Model</Button>
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-      </div>
-    </Panel>
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+    </Modal>
   )
 }
 
@@ -210,16 +243,14 @@ export function ModelsView() {
         {error && <span className="mono" style={{ color: 'var(--fault)', fontSize: 'var(--fs-1)' }}>{error}</span>}
       </div>
 
-      {showForm && (
-        <ModelForm
-          key={editTargetId ?? 'add'}
-          providers={providers}
-          defaultProviderId={providerId}
-          model={editTarget}
-          onSave={handleSaveModel}
-          onCancel={handleCancel}
-        />
-      )}
+      <ModelForm
+        open={showForm}
+        providers={providers}
+        defaultProviderId={providerId}
+        model={editTarget}
+        onSave={handleSaveModel}
+        onCancel={handleCancel}
+      />
 
       {!showForm && models.length === 0 && (
         <EmptyState icon="◇" title="No models for this provider" hint="Run Sync Models or add one manually." />
@@ -253,14 +284,14 @@ export function ModelsView() {
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', maxWidth: 280 }}>
                       {capabilityLabels.map(({ key, label }) => (
-                        <Tag key={key} on={parseCapabilities(m.capabilities_json)[key]}>{label}</Tag>
+                        <span key={key}>{label}</span>
                       ))}
                     </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {m.stale && <span style={{ color: 'var(--warn)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-0)', textTransform: 'uppercase' }}>stale</span>}
-                      <Tag on={m.enabled}>{m.enabled ? 'enabled' : 'disabled'}</Tag>
+                      <span>{m.enabled ? 'enabled' : 'disabled'}</span>
                     </div>
                   </td>
                   <td>

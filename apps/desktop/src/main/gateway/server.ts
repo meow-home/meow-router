@@ -45,7 +45,7 @@ export interface GatewayServer {
   start(): Promise<{ host: string; port: number }>
   stop(): Promise<void>
   getPort(): number
-  listener(): Server
+  listener(): Server | undefined
 }
 
 export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServerOptions = {}): GatewayServer {
@@ -309,6 +309,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
             latencyMs: Date.now() - attemptStart,
             status: 'error',
             errorCode: code,
+            errorMessage: err instanceof Error ? err.message : String(err),
             routeAttempt: i
           })
           logger.info('stream route error', { requestId, route: i, providerId: route.providerId, code })
@@ -326,6 +327,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
           latencyMs: Date.now() - attemptStart,
           status: 'error',
           errorCode: code,
+          errorMessage: err instanceof Error ? err.message : String(err),
           routeAttempt: i
         })
         logger.warn('stream route fallback', { requestId, route: i, providerId: route.providerId, code })
@@ -431,6 +433,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
             latencyMs: Date.now() - attemptStart,
             status: 'error',
             errorCode: code,
+            errorMessage: err instanceof Error ? err.message : String(err),
             routeAttempt: i
           })
           logger.error('completion error', { requestId, route: i, error: err instanceof Error ? err.message : String(err) })
@@ -447,6 +450,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
           latencyMs: Date.now() - attemptStart,
           status: 'error',
           errorCode: code,
+          errorMessage: err instanceof Error ? err.message : String(err),
           routeAttempt: i
         })
         logger.warn('completion fallback', { requestId, route: i, providerId: route.providerId, code })
@@ -481,8 +485,10 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     async stop() {
       return new Promise((resolve) => {
         if (!server) return resolve()
-        server.close(() => resolve())
-        server.closeAllConnections?.()
+        const s = server
+        server = undefined
+        s.close(() => resolve())
+        s.closeAllConnections?.()
       })
     },
     getPort() {
@@ -490,7 +496,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       return addr ? addr.port : port
     },
     listener() {
-      return server!
+      return server
     }
   }
 }

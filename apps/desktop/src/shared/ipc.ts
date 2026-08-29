@@ -10,9 +10,9 @@ import type {
   NewGatewayConfig,
   NewModel
 } from '../main/database/types'
-export type { NewGatewayConfig, ModelRow, NewModel, VirtualModelRow, GatewayConfigRow, RequestUsageRow, ProviderRow } from '../main/database/types'
-import type { DashboardTotals } from '../main/database/repositories/usageRepository'
-export type { DashboardTotals } from '../main/database/repositories/usageRepository'
+export type { NewGatewayConfig, ModelRow, NewModel, VirtualModelRow, GatewayConfigRow, RequestUsageRow, RequestUsageRowWithProviderName, ProviderRow } from '../main/database/types'
+import type { DashboardTotals, UsagePage } from '../main/database/repositories/usageRepository'
+export type { DashboardTotals, UsagePage } from '../main/database/repositories/usageRepository'
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
 
 export interface WindowApi {
@@ -39,6 +39,7 @@ export interface WindowApi {
   gatewayRegenerateKey(): Promise<GatewayKeyInfo>
   usageDashboardTotals(): Promise<DashboardTotals>
   usageListRecent(limit: number): Promise<RequestUsageRow[]>
+  usageListPage(page: number, pageSize: number): Promise<UsagePage>
   ping(): Promise<PingResult>
   listVirtualModels(): Promise<VirtualModelRow[]>
   getVirtualModel(id: string): Promise<VirtualModelRow | null>
@@ -78,7 +79,8 @@ export const IPC_CHANNELS = {
   },
   usage: {
     dashboardTotals: 'usage:dashboard-totals',
-    listRecent: 'usage:list-recent'
+    listRecent: 'usage:list-recent',
+    listPage: 'usage:list-page'
   },
   virtualModel: {
     list: 'virtual-model:list',

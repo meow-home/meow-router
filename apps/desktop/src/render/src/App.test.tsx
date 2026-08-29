@@ -11,8 +11,6 @@ describe('App', () => {
 
   it('navigates to the gateway view', async () => {
     render(<App />)
-    // The rail nav has a "Gateway" item; the RouteStrip also prints a "Gateway"
-    // node, so pick the navigation button specifically.
     const btn = await screen.findByRole('button', { name: /Gateway/i })
     btn.click()
     expect(await screen.findByText(/Require gateway API key/i)).toBeTruthy()

@@ -165,6 +165,17 @@ export const MIGRATIONS: Migration[] = [
         UPDATE gateway_config SET auth_enabled = 1;
       `)
     }
+  },
+  {
+    version: 7,
+    name: 'request_usage_error_message',
+    up: (db) => {
+      // Persist the sanitized, user-facing error message alongside the error
+      // code so the Usage dashboard can surface why a request failed.
+      db.exec(`
+        ALTER TABLE request_usage ADD COLUMN error_message TEXT;
+      `)
+    }
   }
 ]
 

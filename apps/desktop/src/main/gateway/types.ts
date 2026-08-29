@@ -35,6 +35,9 @@ export interface GatewayUsage {
   latencyMs: number
   status: 'success' | 'error' | 'aborted'
   errorCode?: string
+  // Sanitized, user-facing message describing why the request failed (only set
+  // for status === 'error'). Never includes provider secrets/headers.
+  errorMessage?: string
   // Ordinal (0-based) of the routing candidate this record belongs to.
   routeAttempt?: number
 }

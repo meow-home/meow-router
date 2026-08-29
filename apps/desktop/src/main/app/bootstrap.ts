@@ -55,7 +55,7 @@ import type {
   RequestUsageRow,
   NewModel
 } from '../database/types'
-import type { DashboardTotals } from '../database/repositories/usageRepository'
+import type { DashboardTotals, UsagePage } from '../database/repositories/usageRepository'
 import type { ModelInfo } from '@meow-gateway/provider-core'
 
 export interface MeowGatewayApp {
@@ -359,6 +359,11 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
     if (!isValidLimit(limit)) return badRequest('Invalid limit.', 'INVALID_USAGE')
     return wrap(() => usageRepo.list(limit))
   })
+
+  ipcMain.handle(IPC_CHANNELS.usage.listPage, async (_e, page: number, pageSize: number): Promise<IpcResult<UsagePage>> => {
+    if (!isValidPage(page) || !isValidLimit(pageSize)) return badRequest('Invalid page arguments.', 'INVALID_USAGE')
+    return wrap(() => usageRepo.listPage(page, pageSize))
+  })
 }
 
 // --- IPC input validation (T801) -------------------------------------------
@@ -444,6 +449,10 @@ function isValidGatewayConfig(v: unknown): v is NewGatewayConfig {
 
 function isValidLimit(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 500
+}
+
+function isValidPage(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1
 }
 
 function badRequest(message: string, code = 'INVALID_VIRTUAL_MODEL'): IpcResult<never> {

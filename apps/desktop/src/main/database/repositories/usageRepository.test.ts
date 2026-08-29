@@ -108,7 +108,7 @@ describe('UsageRepository', () => {
 
   it('derives dashboard totals from persisted records', () => {
     repo.record({ ...base, status: 'success', estimated_cost: 0.006, input_tokens: 1000, output_tokens: 500 })
-    repo.record({ ...base, request_id: 'r2', status: 'error', estimated_cost: null, input_tokens: 10, output_tokens: 0, error_code: 'AUTH_ERROR' })
+    repo.record({ ...base, request_id: 'r2', status: 'error', estimated_cost: null, input_tokens: 10, output_tokens: 0, error_code: 'AUTH_ERROR', error_message: 'Invalid API key' })
     repo.record({ ...base, request_id: 'r3', status: 'aborted', estimated_cost: 0.001, input_tokens: 0, output_tokens: 0 })
     const t = repo.dashboardTotals()
     expect(t.totalRequests).toBe(3)
@@ -118,6 +118,19 @@ describe('UsageRepository', () => {
     expect(t.errorRequests).toBe(1)
     expect(t.abortedRequests).toBe(1)
     expect(t.byProvider[0].provider_id).toBe('openai')
+    expect(t.byProvider[0].provider_name).toBe('OpenAI')
     expect(t.byProvider[0].request_count).toBe(3)
+  })
+
+  it('lists a page of rows with the provider name joined in', () => {
+    repo.record({ ...base, request_id: 'a', created_at: '2026-01-01T00:00:00Z' })
+    repo.record({ ...base, request_id: 'b', created_at: '2026-01-02T00:00:00Z', error_code: 'AUTH_ERROR', error_message: 'Bad key' })
+    repo.record({ ...base, request_id: 'c', created_at: '2026-01-03T00:00:00Z' })
+    const page = repo.listPage(2, 2)
+    expect(page.total).toBe(3)
+    expect(page.rows).toHaveLength(1)
+    expect(page.rows[0].request_id).toBe('a')
+    expect(page.rows[0].provider_name).toBe('OpenAI')
+    expect(repo.findById(page.rows[0].id)!.error_message).toBeNull()
   })
 })

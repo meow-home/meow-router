@@ -11,7 +11,8 @@ import {
   type GatewayStatus,
   type GatewayKeyInfo,
   type IpcResult,
-  type DashboardTotals
+  type DashboardTotals,
+  type UsagePage
 } from '../shared/ipc'
 import type {
   VirtualModelRow,
@@ -60,6 +61,7 @@ const api: WindowApi = {
   gatewayRegenerateKey: () => invoke<GatewayKeyInfo>(IPC_CHANNELS.gateway.regenerateKey),
   usageDashboardTotals: () => invoke<DashboardTotals>(IPC_CHANNELS.usage.dashboardTotals),
   usageListRecent: (limit) => invoke<RequestUsageRow[]>(IPC_CHANNELS.usage.listRecent, limit),
+  usageListPage: (page, pageSize) => invoke<UsagePage>(IPC_CHANNELS.usage.listPage, page, pageSize),
   listVirtualModels: () => invoke<VirtualModelRow[]>(IPC_CHANNELS.virtualModel.list),
   getVirtualModel: (id) => invoke<VirtualModelRow | null>(IPC_CHANNELS.virtualModel.get, id),
   createVirtualModel: (input: NewVirtualModelInput) => invoke<VirtualModelRow>(IPC_CHANNELS.virtualModel.create, input),

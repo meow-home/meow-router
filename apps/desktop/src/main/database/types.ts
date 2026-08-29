@@ -111,15 +111,23 @@ export interface RequestUsageRow {
   latency_ms: number
   status: string
   error_code: string | null
+  error_message: string | null
   route_attempt: number
   created_at: string
 }
 
-export type NewRequestUsage = Omit<RequestUsageRow, 'id' | 'created_at' | 'estimated_cost' | 'route_attempt'> & {
+// Usage rows returned to the renderer; the provider display name is joined in
+// so the UI never has to cross-reference the provider table itself.
+export interface RequestUsageRowWithProviderName extends RequestUsageRow {
+  provider_name: string | null
+}
+
+export type NewRequestUsage = Omit<RequestUsageRow, 'id' | 'created_at' | 'estimated_cost' | 'route_attempt' | 'error_message'> & {
   id?: string
   created_at?: string
   estimated_cost?: number | null
   route_attempt?: number
+  error_message?: string | null
 }
 
 export type RoutingStrategy = 'sequential' | 'priority'
