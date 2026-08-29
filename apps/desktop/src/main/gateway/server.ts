@@ -23,6 +23,7 @@ import { nullLogger } from './types'
 import { toGatewayErrorBody, httpStatusFor } from './errors'
 import { parseJsonBody, validateChatCompletionsBody, createBodyReader } from './validate'
 import { chunkToSseData, createRequestId } from './sse'
+import { checkAuth } from './auth'
 
 export const DEFAULT_PORT = 8317
 export const DEFAULT_HOST = '127.0.0.1'
@@ -68,6 +69,23 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       }
 
       const url = new URL(req.url ?? '/', `http://${host}`)
+
+      const policy = (await deps.getAuthPolicy?.()) ?? { enabled: false, key: null }
+      const auth = checkAuth(
+        {
+          method: req.method ?? 'GET',
+          pathname: url.pathname,
+          authorization: req.headers.authorization
+        },
+        policy
+      )
+      if (!auth.ok) {
+        res.writeHead(auth.status, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(auth.body))
+        // Path only: never the header, never the key.
+        logger.warn('unauthorized', { requestId, path: url.pathname })
+        return
+      }
 
       // GET /health
       if (req.method === 'GET' && url.pathname === '/health') {

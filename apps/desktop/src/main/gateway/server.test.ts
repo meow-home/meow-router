@@ -735,3 +735,109 @@ describe('routing & fallback (T701)', () => {
     })
   })
 })
+
+describe('gateway auth', () => {
+  const KEY = 'mgw_0123456789abcdef0123456789ab1f4a'
+
+  it('rejects a chat completion with no key when auth is on', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(401)
+      expect(JSON.stringify(body)).not.toContain(KEY)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('accepts a chat completion with the correct key', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(200)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('serves /health without a key while auth is on', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/health`)
+      expect(status).toBe(200)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('rejects GET /v1/models without a key', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/models`)
+      expect(status).toBe(401)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('streams a completion with the correct key', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      const res = await fetch(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }], stream: true })
+      })
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/event-stream')
+      const frames = (await res.text()).split('\n').filter((l) => l.startsWith('data:'))
+      expect(frames[frames.length - 1].trim()).toBe('data: [DONE]')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('never logs the Authorization header', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: KEY })
+    })
+    try {
+      await fetchJson(`http://${addr.host}:${addr.port}/v1/models`, {
+        headers: { authorization: `Bearer ${KEY}` }
+      })
+      expect(JSON.stringify(harness.logs)).not.toContain(KEY)
+    } finally {
+      await server.stop()
+    }
+  })
+})

@@ -4,6 +4,7 @@
 // never couples to SQLite, Electron, or any specific provider directly. The main
 // process wires real implementations; tests inject fakes.
 
+import type { AuthPolicy } from './auth'
 import type { ProviderRegistry, ModelInfo } from '@meow-gateway/provider-core'
 
 // A model resolved from a client-visible model id (virtual model in later phases).
@@ -70,5 +71,8 @@ export interface GatewayDependencies {
   recordUsage?(usage: GatewayUsage): Promise<void>
   // List client-visible models for GET /v1/models. Optional; defaults to [].
   listModels?(): Promise<Array<{ id: string; object: string; owned_by: string }>>
+  // Resolve the current auth policy. Optional: when absent the gateway treats
+  // auth as disabled. Bootstrap always supplies it.
+  getAuthPolicy?(): Promise<AuthPolicy>
   logger?: GatewayLogger
 }
