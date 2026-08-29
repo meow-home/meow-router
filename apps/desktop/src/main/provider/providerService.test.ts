@@ -43,7 +43,7 @@ describe('ProviderService', () => {
     setCredential: vi.fn(),
     deleteCredential: vi.fn()
   }
-  const registry = { get: vi.fn(), list: vi.fn().mockReturnValue([]) }
+  const registry = { get: vi.fn(), list: vi.fn().mockReturnValue([]), ids: vi.fn().mockReturnValue([]) }
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -126,11 +126,19 @@ describe('ProviderService', () => {
   })
 
   it('providerTypes returns descriptors for registered adapters', () => {
-    registry.list.mockReturnValue([{ id: 'deepseek' }])
+    registry.ids.mockReturnValue(['deepseek'])
     const types = service.providerTypes()
     expect(types).toHaveLength(1)
     expect(types[0].id).toBe('deepseek')
     expect(types[0].displayName).toBe('DeepSeek')
+  })
+
+  it('providerTypes returns metadata from the registry, not a hardcoded map', () => {
+    registry.ids.mockReturnValue(['openai', 'openrouter', 'groq'])
+    const types = service.providerTypes()
+    expect(types.map((t) => t.id)).toEqual(['openai', 'openrouter', 'groq'])
+    expect(types.find((t) => t.id === 'openai')?.defaultBaseUrl).toBe('https://api.openai.com/v1')
+    expect(types.find((t) => t.id === 'openrouter')?.defaultBaseUrl).toBe('https://openrouter.ai/api/v1')
   })
 
   describe('createModel', () => {

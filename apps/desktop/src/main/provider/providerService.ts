@@ -14,12 +14,28 @@ import type { AccountRepository } from '../database/repositories/accountReposito
 import type { ModelRepository } from '../database/repositories/modelRepository'
 import type { CredentialService } from '../credentials/credentialService'
 import { ProviderError, assertSafeEndpoint, type ProviderRegistry, type ModelInfo, type CredentialCheckResult } from '@meow-gateway/provider-core'
+import { openaiCompatibleMetadata } from '@meow-gateway/provider-openai'
+import { deepseekMetadata } from '@meow-gateway/provider-deepseek'
 import type { ProviderRow, ModelRow, NewModel } from '../database/types'
 import type { NewProviderInput, ProviderWithCredential, ProviderTypeDescriptor } from '../../shared/ipc'
 
 function credentialRefFor(providerId: string): string {
   // Refs must satisfy VALID_REF_RE in the credential service (/^[\w.:/-]+$/).
   return `provider:${providerId}`
+}
+
+// Known provider metadata keyed by adapter id. This mirrors the provider
+// packages; the registry is the runtime source of truth for WHICH providers
+// exist (ids), while this map supplies display metadata. New providers just
+// register an adapter and add an entry here — no picker change.
+const KNOWN_METADATA: Record<string, ProviderTypeDescriptor> = {
+  openai: { id: 'openai', displayName: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', authType: 'bearer' },
+  [openaiCompatibleMetadata.id]: { id: openaiCompatibleMetadata.id, displayName: openaiCompatibleMetadata.displayName, defaultBaseUrl: openaiCompatibleMetadata.defaultBaseUrl, authType: openaiCompatibleMetadata.authType },
+  deepseek: { id: deepseekMetadata.id, displayName: deepseekMetadata.displayName, defaultBaseUrl: deepseekMetadata.defaultBaseUrl, authType: deepseekMetadata.authType },
+  openrouter: { id: 'openrouter', displayName: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', authType: 'bearer' },
+  groq: { id: 'groq', displayName: 'Groq', defaultBaseUrl: 'https://api.groq.com/openai/v1', authType: 'bearer' },
+  ollama: { id: 'ollama', displayName: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434/v1', authType: 'bearer' },
+  lmstudio: { id: 'lmstudio', displayName: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234/v1', authType: 'bearer' }
 }
 
 export class ProviderService {
@@ -159,17 +175,6 @@ export class ProviderService {
   }
 
   providerTypes(): ProviderTypeDescriptor[] {
-    const registryList = this.registry.list()
-    return registryList.map((adapter) => this.describeProvider(adapter.id))
-  }
-
-  // Metadata for a provider id. Known ids map to static descriptors; anything
-  // else falls back to a generic descriptor so the picker stays honest.
-  private describeProvider(id: string): ProviderTypeDescriptor {
-    const known: Record<string, ProviderTypeDescriptor> = {
-      openai: { id: 'openai', displayName: 'OpenAI-Compatible', defaultBaseUrl: 'https://api.openai.com/v1', authType: 'bearer' },
-      deepseek: { id: 'deepseek', displayName: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com/v1', authType: 'bearer' }
-    }
-    return known[id] ?? { id, displayName: id, defaultBaseUrl: '', authType: 'bearer' }
+    return this.registry.ids().map((id) => KNOWN_METADATA[id] ?? { id, displayName: id, defaultBaseUrl: '', authType: 'bearer' })
   }
 }

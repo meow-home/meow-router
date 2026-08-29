@@ -9,8 +9,10 @@ export interface ProviderMetadata {
   authType: 'bearer' // OpenAI-compatible uses Bearer API key auth
 }
 
+export const OPENAI_COMPATIBLE_ID = 'openai-compatible'
+
 export const openaiCompatibleMetadata: ProviderMetadata = {
-  id: 'openai-compatible',
+  id: OPENAI_COMPATIBLE_ID,
   displayName: 'OpenAI-Compatible',
   defaultBaseUrl: 'https://api.openai.com/v1',
   authType: 'bearer'
