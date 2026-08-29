@@ -35,15 +35,15 @@ describe('database connection & migrations', () => {
 
   it('records migrations exactly once', () => {
     const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[]
-    expect(rows.length).toBe(4)
-    expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4])
+    expect(rows.length).toBe(5)
+    expect(rows.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('applies migrations in ascending version order', () => {
     const rows = db
       .prepare('SELECT version FROM schema_migrations ORDER BY version')
       .all() as { version: number }[]
-    expect(rows.map((r) => r.version)).toEqual([1, 2, 3, 4])
+    expect(rows.map((r) => r.version)).toEqual([1, 2, 3, 4, 5])
   })
 })
 
