@@ -95,6 +95,32 @@ export class ModelRepository {
     return this.create(input)
   }
 
+  update(id: string, patch: Partial<Omit<ModelRow, 'id' | 'created_at' | 'discovered_at'>>): ModelRow | undefined {
+    const existing = this.findById(id)
+    if (!existing) return undefined
+    const merged: ModelRow = {
+      ...existing,
+      ...patch,
+      enabled: patch.enabled ?? existing.enabled,
+      discovered_at: existing.discovered_at
+    }
+    this.db
+      .prepare(
+        `UPDATE model
+         SET provider_id = ?, provider_model_id = ?, display_name = ?,
+             context_window = ?, input_price = ?, output_price = ?,
+             capabilities_json = ?, enabled = ?, discovered_at = ?
+         WHERE id = ?`
+      )
+      .run([
+        merged.provider_id, merged.provider_model_id, merged.display_name,
+        merged.context_window, merged.input_price, merged.output_price,
+        merged.capabilities_json, merged.enabled ? 1 : 0, merged.discovered_at, merged.id
+      ])
+    this.db.save()
+    return merged
+  }
+
   delete(id: string): boolean {
     const res = this.db.prepare('DELETE FROM model WHERE id = ?').run([id])
     this.db.save()
