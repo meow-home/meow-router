@@ -1,6 +1,7 @@
 /* Reusable UI primitives for Meow Gateway — aligned with meow-coding's design system. */
 
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 
 export function classNames(...parts: Array<string | false | null | undefined>): string {
@@ -265,7 +266,11 @@ export function Modal({
   }, [open, onClose])
 
   if (!open) return null
-  return (
+  // Portal to <body>: an ancestor with a transform (the views' entrance
+  // animation keeps one via fill-mode: both) would otherwise become the
+  // containing block for this fixed backdrop, trapping the overlay inside a
+  // scrolling pane instead of covering the whole window.
+  return createPortal(
     <div
       className="dialog-backdrop"
       onClick={onClose}
@@ -286,7 +291,8 @@ export function Modal({
         {children}
         {footer && <div className="dialog-actions">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

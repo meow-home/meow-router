@@ -13,8 +13,8 @@ describe('AddProviderModal', () => {
   })
 
   it('does not render when closed', () => {
-    const { container } = render(<AddProviderModal open={false} types={types} onClose={vi.fn()} onCreated={vi.fn()} />)
-    expect(container.querySelector('.dialog')).toBeNull()
+    render(<AddProviderModal open={false} types={types} onClose={vi.fn()} onCreated={vi.fn()} />)
+    expect(document.querySelector('.dialog')).toBeNull()
   })
 
   it('submits and calls createProvider then onCreated', async () => {

@@ -106,6 +106,10 @@ code, .mono { font-family: var(--font-mono); }
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes meow-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 /* ---------- app shell ---------- */
 .app-shell { height: 100%; display: flex; flex-direction: column; }
@@ -364,7 +368,8 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
   background: rgba(0, 0, 0, 0.65);
   display: flex; align-items: center; justify-content: center;
   z-index: 100;
-  animation: meow-rise 160ms ease-out both;
+  /* Fade only: a viewport-sized scrim must not translate, or it overflows. */
+  animation: meow-fade 160ms ease-out both;
 }
 .dialog {
   position: relative;

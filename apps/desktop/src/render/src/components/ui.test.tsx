@@ -4,8 +4,24 @@ import { Modal, ConfirmDialog, Toggle, Spinner, Checkbox, Select } from './ui'
 
 describe('Modal', () => {
   it('renders nothing when closed', () => {
-    const { container } = render(<Modal open={false} onClose={() => {}} title="T" />)
-    expect(container.querySelector('.dialog')).toBeNull()
+    render(<Modal open={false} onClose={() => {}} title="T" />)
+    expect(document.querySelector('.dialog')).toBeNull()
+  })
+
+  it('renders into document.body, escaping transformed/scrolling ancestors', () => {
+    // A transformed ancestor becomes the containing block for position:fixed
+    // descendants, trapping the full-screen backdrop inside a scroll container.
+    const host = document.createElement('div')
+    host.style.transform = 'translateY(0)'
+    host.style.overflowY = 'auto'
+    document.body.appendChild(host)
+
+    render(<Modal open onClose={() => {}} title="Portaled" />, { container: host })
+
+    const backdrop = document.querySelector('.dialog-backdrop')
+    expect(backdrop).not.toBeNull()
+    expect(host.contains(backdrop)).toBe(false)
+    expect(backdrop!.parentElement).toBe(document.body)
   })
 
   it('renders content and title when open', () => {

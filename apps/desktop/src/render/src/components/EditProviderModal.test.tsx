@@ -14,16 +14,16 @@ describe('EditProviderModal', () => {
   })
 
   it('does not render when closed', () => {
-    const { container } = render(<EditProviderModal open={false} provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
-    expect(container.querySelector('.dialog')).toBeNull()
+    render(<EditProviderModal open={false} provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
+    expect(document.querySelector('.dialog')).toBeNull()
   })
 
   it('prefills and disables the type select, calls updateProvider with enabled', async () => {
-    const { container } = render(<EditProviderModal open provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
-    const select = container.querySelector('select') as HTMLSelectElement
+    render(<EditProviderModal open provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
+    const select = document.querySelector('select') as HTMLSelectElement
     expect(select.disabled).toBe(true)
     expect((screen.getByRole('checkbox', { name: 'Enabled' }) as HTMLInputElement).checked).toBe(true)
-    fireEvent.click(container.querySelector('input[type="checkbox"]') as HTMLInputElement)
+    fireEvent.click(document.querySelector('input[type="checkbox"]') as HTMLInputElement)
     fireEvent.click(screen.getByText('Save Provider'))
     await waitFor(() => expect(gw.updateProvider).toHaveBeenCalledWith('p1', { display_name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', enabled: false }))
   })
