@@ -870,3 +870,48 @@ describe('provider credential resolution', () => {
     }
   })
 })
+
+describe('provider base URL routing', () => {
+  it('hands the adapter the base URL the provider was configured with', async () => {
+    // Without this the OpenAI-compatible adapter falls back to its DEFAULT_BASE_URL,
+    // so a request meant for opencode Zen or Groq is sent to api.openai.com.
+    const seen: Array<string | undefined> = []
+    const registry = new ProviderRegistry()
+    registry.register({
+      id: 'openai',
+      async getModels() { return [] },
+      async validateCredentials() { return { ok: true, message: 'ok' } },
+      async *chat(ctx: { baseUrl?: string }) {
+        seen.push(ctx.baseUrl)
+        yield { id: 'c1', kind: 'content_delta', delta: 'ok' }
+      }
+    } as unknown as ProviderAdapter)
+
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      registry,
+      resolveModel: async () => ({
+        providerId: 'openai',
+        providerModelId: 'deepseek-v4-flash-vision-exp',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        model: {
+          id: 'meo-ds-v4-flash-vision',
+          providerModelId: 'deepseek-v4-flash-vision-exp',
+          displayName: 'meo-ds-v4-flash-vision',
+          capabilities: { streaming: true, tools: true, vision: true, reasoning: false, structuredOutput: true }
+        }
+      })
+    })
+    try {
+      await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'meo-ds-v4-flash-vision', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(seen).toEqual(['https://opencode.ai/zen/go/v1'])
+    } finally {
+      await server.stop()
+    }
+  })
+})

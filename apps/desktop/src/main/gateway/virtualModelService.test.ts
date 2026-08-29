@@ -34,6 +34,39 @@ describe('VirtualModelService', () => {
     expect(resolved!.model.id).toBe('deepseek-chat')
   })
 
+  it("carries the provider's configured base URL onto the resolved model", async () => {
+    // The adapter falls back to its own DEFAULT_BASE_URL when this is missing,
+    // sending a request meant for one vendor's endpoint to another's.
+    const providerRepo = new ProviderRepository(db)
+    providerRepo.create({
+      id: 'opencode',
+      type: 'opencode',
+      display_name: 'opencode Zen',
+      base_url: 'https://opencode.ai/zen/go/v1'
+    })
+    new ModelRepository(db).create({
+      provider_id: 'opencode',
+      provider_model_id: 'deepseek-v4-flash-vision-exp',
+      display_name: 'vision'
+    })
+    repo.create({
+      display_name: 'meo-ds-v4-flash-vision',
+      provider_id: 'opencode',
+      provider_model_id: 'deepseek-v4-flash-vision-exp'
+    })
+    const withProviders = new VirtualModelService(repo, null, providerRepo)
+    const resolved = await withProviders.resolveModel('meo-ds-v4-flash-vision')
+    expect(resolved!.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+  })
+
+  it('leaves the base URL unset when the provider has none', async () => {
+    const providerRepo = new ProviderRepository(db)
+    repo.create({ display_name: 'plain', provider_id: 'deepseek', provider_model_id: 'deepseek-chat' })
+    const withProviders = new VirtualModelService(repo, null, providerRepo)
+    const resolved = await withProviders.resolveModel('plain')
+    expect(resolved!.baseUrl).toBeUndefined()
+  })
+
   it('returns null for an unknown virtual model', async () => {
     expect(await service.resolveModel('nope')).toBeNull()
   })

@@ -89,7 +89,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   registry.register(createDeepSeekAdapter('deepseek'))
   registry.register(createOpenAICompatibleAdapter('openai-compatible'))
 
-  const virtualModels = new VirtualModelService(virtualModelRepo)
+  const virtualModels = new VirtualModelService(virtualModelRepo, null, providerRepo)
   const usage = new UsageService(usageRepo, modelRepo)
   const providerService = new ProviderService(providerRepo, accountRepo, modelRepo, credentials, registry)
 

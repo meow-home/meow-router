@@ -11,6 +11,9 @@ import type { ProviderRegistry, ModelInfo } from '@meow-gateway/provider-core'
 export interface ResolvedModel {
   providerId: string
   providerModelId: string
+  // The provider's configured endpoint. Without it the adapter falls back to
+  // its own default and a request meant for one vendor is sent to another.
+  baseUrl?: string
   model: ModelInfo
 }
 
@@ -34,6 +37,7 @@ export interface GatewayUsage {
 export interface RouteCandidate {
   providerId: string
   providerModelId: string
+  baseUrl?: string
 }
 
 // An ordered list of routes (primary first). Loop prevented by the resolver.

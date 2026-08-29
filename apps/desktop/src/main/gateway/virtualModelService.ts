@@ -7,6 +7,7 @@
 
 import type { VirtualModelRepository } from '../database/repositories/virtualModelRepository'
 import type { RoutingPolicyRepository } from '../database/repositories/routingPolicyRepository'
+import type { ProviderRepository } from '../database/repositories/providerRepository'
 import type { ResolvedModel, RouteCandidate, RouteList } from './types'
 import type { ModelInfo } from '@meow-gateway/provider-core'
 
@@ -25,16 +26,25 @@ function toModelInfo(vm: { provider_model_id: string; provider_id: string }): Mo
 export class VirtualModelService {
   constructor(
     private readonly repo: VirtualModelRepository,
-    private readonly routingPolicies: RoutingPolicyRepository | null = null
+    private readonly routingPolicies: RoutingPolicyRepository | null = null,
+    // Supplies each route's endpoint. Optional so existing callers keep working,
+    // but the gateway must pass it or adapters fall back to their own default.
+    private readonly providers: ProviderRepository | null = null
   ) {}
+
+  private baseUrlFor(providerId: string): string | undefined {
+    return this.providers?.findById(providerId)?.base_url ?? undefined
+  }
 
   async resolveModel(id: string): Promise<ResolvedModel | null> {
     // Accept either the virtual model display name or its internal id.
     const vm = this.repo.findByDisplayName(id) ?? this.repo.findById(id)
     if (!vm || !vm.enabled) return null
+    const baseUrl = this.baseUrlFor(vm.provider_id)
     return {
       providerId: vm.provider_id,
       providerModelId: vm.provider_model_id,
+      ...(baseUrl ? { baseUrl } : {}),
       model: toModelInfo(vm)
     }
   }

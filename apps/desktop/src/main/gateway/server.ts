@@ -203,6 +203,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     const ctx: ProviderContext = {
       credentialRef: refFor(route.providerId),
       credential,
+      ...(route.baseUrl ? { baseUrl: route.baseUrl } : {}),
       signal,
       requestId
     }
@@ -490,8 +491,16 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
   }
 }
 
-function primaryRoute(resolved: { providerId: string; providerModelId: string }): RouteCandidate {
-  return { providerId: resolved.providerId, providerModelId: resolved.providerModelId }
+function primaryRoute(resolved: {
+  providerId: string
+  providerModelId: string
+  baseUrl?: string
+}): RouteCandidate {
+  return {
+    providerId: resolved.providerId,
+    providerModelId: resolved.providerModelId,
+    ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {})
+  }
 }
 
 // Must stay identical to credentialRefFor() in provider/providerService.ts,
