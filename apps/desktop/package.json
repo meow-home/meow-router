@@ -2,7 +2,15 @@
   "name": "@meow-gateway/desktop",
   "version": "0.1.0",
   "description": "Meow Gateway - local AI model gateway & provider manager for coding agents.",
-  "author": "Meow Gateway Contributors",
+  "homepage": "https://github.com/meow-home/meow-router",
+  "author": {
+    "name": "Meow Gateway Contributors",
+    "email": "meow-home@users.noreply.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/meow-home/meow-router.git"
+  },
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -41,7 +49,10 @@
         "AppImage",
         "deb"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "maintainer": "Meow Gateway Contributors <meow-home@users.noreply.github.com>",
+      "vendor": "Meow Gateway",
+      "synopsis": "Local AI model gateway & provider manager for coding agents."
     },
     "nsis": {
       "oneClick": false,

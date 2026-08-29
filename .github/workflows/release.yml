@@ -73,8 +73,9 @@ jobs:
         run: |
           sudo apt-get update
           # bsdtar (libarchive-tools) is used by electron-builder for AppImage;
-          # fpm is the bundled tool that produces the .deb package.
-          sudo apt-get install -y libarchive-tools
+          # ruby/fpm produce the .deb package.
+          sudo apt-get install -y libarchive-tools ruby
+          sudo gem install --no-document fpm
 
       # Derive the app version from the tag, stripping the leading "v".
       - name: Compute version
