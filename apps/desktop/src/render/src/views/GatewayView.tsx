@@ -44,7 +44,7 @@ export function GatewayView() {
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderColor: status.running ? 'var(--live)' : 'var(--line)' }}>
+      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderColor: status.running ? 'var(--green-dim)' : 'var(--hairline)' }}>
         <Pill tone={status.running ? 'live' : 'muted'}>{status.running ? 'running' : 'stopped'}</Pill>
         <div style={{ flex: 1 }}>
           <div className="mono" style={{ fontSize: 'var(--fs-3)', letterSpacing: '0.03em' }}>

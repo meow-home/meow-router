@@ -46,6 +46,8 @@
   --blue: #4fc3ff;
   --green: #4ade9f;
   --green-deep: #34d6a4;
+  /* Dimmed green for large surfaces (panel borders), where --green glares. */
+  --green-dim: rgba(74, 222, 159, 0.35);
   --yellow: #ffb454;
   --orange: #ffb454;
   --red: #ff5f56;
