@@ -17,6 +17,21 @@ Meow Gateway is a cross-platform Electron desktop application that lets users:
 
 The primary consumer is a coding agent such as Meow Coding, OpenCode, Claude Code, Aider, Cline/Roo Code or another OpenAI-compatible client.
 
+## Providers
+
+OpenAI-compatible providers can be added by choosing a provider type and typing
+a base URL. Presets include OpenAI, OpenRouter and Groq (remote endpoints).
+Ollama and LM Studio appear as presets in the provider picker, but they are NOT
+registered as runtime adapters in the current slice — the loopback SSRF guard
+remains enforced, so loopback endpoints stay blocked unless an explicit allow is
+added later.
+
+## Sync Models
+
+"Sync Models" (formerly "Refresh") re-discovers a provider's model list. It
+preserves the user's enabled/disabled choice and marks models that are absent
+from the provider API as `stale`; it never deletes models.
+
 ## Architecture
 
 Single local endpoint:
