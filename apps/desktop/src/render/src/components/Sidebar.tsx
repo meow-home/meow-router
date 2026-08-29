@@ -57,7 +57,7 @@ export function Sidebar({
         </div>
         <span>endpoint 127.0.0.1</span>
         <span style={{ color: 'var(--text-faint)' }}>port 8317 / v1</span>
-        <span style={{ color: 'var(--text-faint)' }}>v{version || '0.1.0'}</span>
+        <span style={{ color: 'var(--text-faint)' }}>{version ? `v${version}` : 'v—'}</span>
       </div>
     </aside>
   )

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { IPC_CHANNELS, type PingPayload, type PingResult } from '../shared/ipc'
+import { IPC_CHANNELS, type IpcResult, type PingPayload, type PingResult } from '../shared/ipc'
 import { bootstrapMeowGatewayApp, type MeowGatewayApp } from './app/bootstrap'
 import { createTray, destroyTray, hasTray } from './tray'
 
@@ -65,8 +65,13 @@ app.whenReady().then(async () => {
     return { pong: 'pong', echo: payload.from }
   })
 
-  ipcMain.handle(IPC_CHANNELS.getAppVersion, (): string => {
-    return app.getVersion()
+  // NOTE: this MUST return an IpcResult envelope ({ ok, data }) matching what
+  // the preload `invoke<T>()` helper unwraps. If we return the raw version
+  // string, `result.ok` is undefined -> falsy -> the preload throws and the
+  // Sidebar falls back to its placeholder, so the footer never shows the real
+  // (bumped) version.
+  ipcMain.handle(IPC_CHANNELS.getAppVersion, (): IpcResult<string> => {
+    return { ok: true, data: app.getVersion() }
   })
 
   // Remove the native File/Edit/View... menu bar; the app is a self-contained
