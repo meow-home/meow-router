@@ -170,13 +170,24 @@ jobs:
           for f in "${files[@]}"; do
             args+=("$f")
           done
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; uploading/overwriting assets."
-            gh release upload "$TAG" "${args[@]}" --clobber
-          else
-            echo "Release $TAG does not exist; creating it."
-            gh release create "$TAG" \
+
+          # Try to create the release first. If it already exists (or an asset
+          # name collides with an asset left behind by an earlier run), gh
+          # returns "HTTP 422: Validation Failed / ReleaseAsset.name already
+          # exists". In that case fall back to uploading with --clobber, which
+          # overwrites any pre-existing asset with the same name. This makes the
+          # step idempotent across re-runs without relying on `gh release view`
+          # (which is unreliable for draft releases or releases that lost their
+          # tag). We never delete the release or its tag.
+          if gh release create "$TAG" \
               --title "Meow Gateway v${version}" \
               --generate-notes \
-              "${args[@]}"
+              "${args[@]}" 2>/tmp/release-create.err; then
+            echo "Release $TAG created with assets."
+          else
+            echo "Release $TAG could not be created (likely already exists); uploading/overwriting assets."
+            if grep -q "already exists" /tmp/release-create.err; then
+              cat /tmp/release-create.err >&2
+            fi
+            gh release upload "$TAG" "${args[@]}" --clobber
           fi
