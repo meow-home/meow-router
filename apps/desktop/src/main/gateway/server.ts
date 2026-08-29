@@ -494,8 +494,11 @@ function primaryRoute(resolved: { providerId: string; providerModelId: string })
   return { providerId: resolved.providerId, providerModelId: resolved.providerModelId }
 }
 
+// Must stay identical to credentialRefFor() in provider/providerService.ts,
+// which is what actually writes the secret. A ref invented here finds nothing
+// and every chat request reports the provider as unconfigured.
 function refFor(providerId: string): string {
-  return `provider.${providerId}.primary`
+  return `provider:${providerId}`
 }
 
 function resDestroyed(res: ServerResponse): boolean {

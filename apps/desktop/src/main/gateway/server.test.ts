@@ -841,3 +841,32 @@ describe('gateway auth', () => {
     }
   })
 })
+
+describe('provider credential resolution', () => {
+  it('asks for the credential ref that ProviderService actually writes', async () => {
+    // ProviderService stores secrets under `provider:<id>` (providerService.ts).
+    // A gateway that invents a different ref finds nothing and reports the
+    // provider as unconfigured on every single chat request.
+    const asked: string[] = []
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getCredential: async (ref: string) => {
+        asked.push(ref)
+        return ref === 'provider:openai' ? 'sk-test' : null
+      }
+    })
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(asked).toContain('provider:openai')
+      expect(body.error?.message ?? '').not.toContain('No credential configured')
+      expect(status).toBe(200)
+    } finally {
+      await server.stop()
+    }
+  })
+})
