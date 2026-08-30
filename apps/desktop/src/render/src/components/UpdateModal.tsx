@@ -1,5 +1,5 @@
 import { Modal, Button, Spinner } from './ui'
-import type { UpdateCheckResult, UpdateDownloadState } from '@shared/ipc'
+import type { UpdateCheckResult, UpdateDownloadState, UpdateDownloadAction } from '@shared/ipc'
 
 export function UpdateModal({
   open,
@@ -7,16 +7,26 @@ export function UpdateModal({
   status,
   onClose,
   onInstall,
+  onDownload,
 }: {
   open: boolean
   result: UpdateCheckResult
   status: UpdateDownloadState
   onClose: () => void
   onInstall?: () => void
+  onDownload?: (dl: UpdateDownloadAction) => void
 }) {
   const downloading = status.status === 'downloading'
   const downloaded = status.status === 'downloaded'
   const errored = status.status === 'error'
+  const canDownload = Boolean(result.downloadUrl && result.assetName)
+
+  const handleDownload = () => {
+    if (!result.downloadUrl || !result.assetName) return
+    const dl: UpdateDownloadAction = { downloadUrl: result.downloadUrl, assetName: result.assetName, digest: result.digest }
+    if (onDownload) onDownload(dl)
+    else window.meowGateway.startUpdateDownload(dl)
+  }
 
   return (
     <Modal open={open} title="Update" onClose={onClose}>
@@ -30,11 +40,15 @@ export function UpdateModal({
           <p className="dialog-message">
             A new version (v{result.latestVersion}) is available. You're on v{result.currentVersion}.
           </p>
-          <div className="dialog-actions">
-            <Button variant="primary" onClick={() => window.meowGateway.startUpdateDownload({ downloadUrl: result.downloadUrl!, assetName: result.assetName!, digest: result.digest })}>
-              Download & Install
-            </Button>
-          </div>
+          {canDownload ? (
+            <div className="dialog-actions">
+              <Button variant="primary" onClick={handleDownload}>
+                Download & Install
+              </Button>
+            </div>
+          ) : (
+            <p className="dialog-message">No installer is available for your platform yet.</p>
+          )}
         </>
       )}
       {downloading && <Spinner label={`Downloading ${Math.round(status.progress * 100)}%`} />}
@@ -49,9 +63,11 @@ export function UpdateModal({
       {errored && (
         <>
           <p className="dialog-message">Download failed: {status.message}</p>
-          <div className="dialog-actions">
-            <Button variant="primary" onClick={() => window.meowGateway.startUpdateDownload({ downloadUrl: result.downloadUrl!, assetName: result.assetName!, digest: result.digest })}>Retry</Button>
-          </div>
+          {canDownload && (
+            <div className="dialog-actions">
+              <Button variant="primary" onClick={handleDownload}>Retry</Button>
+            </div>
+          )}
         </>
       )}
     </Modal>

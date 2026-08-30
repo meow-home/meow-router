@@ -50,4 +50,26 @@ describe('UpdateModal', () => {
     fireEvent.click(screen.getByLabelText('Close'))
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('shows the no-installer message and hides the download button when no asset matches', () => {
+    const result: UpdateCheckResult = {
+      latestVersion: '0.4.0', currentVersion: '0.3.0', hasUpdate: true,
+      releaseUrl: 'https://r', releaseName: 'v0.4.0', publishedAt: '',
+      downloadUrl: undefined, assetName: undefined
+    }
+    render(<UpdateModal open onClose={vi.fn()} result={result} status={{ status: 'idle' }} />)
+    expect(screen.getByText(/No installer is available for your platform yet/i)).toBeTruthy()
+    expect(screen.queryByText('Download & Install')).toBeNull()
+  })
+
+  it('does not render a Retry button when no asset matches and download errored', () => {
+    const result: UpdateCheckResult = {
+      latestVersion: '0.4.0', currentVersion: '0.3.0', hasUpdate: true,
+      releaseUrl: 'https://r', releaseName: 'v0.4.0', publishedAt: '',
+      downloadUrl: undefined, assetName: undefined
+    }
+    render(<UpdateModal open onClose={vi.fn()} result={result} status={{ status: 'error', message: 'boom' }} />)
+    expect(screen.getByText(/Download failed: boom/i)).toBeTruthy()
+    expect(screen.queryByText('Retry')).toBeNull()
+  })
 })
