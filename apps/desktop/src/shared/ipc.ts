@@ -47,6 +47,11 @@ export interface WindowApi {
   createVirtualModel(input: NewVirtualModelInput): Promise<VirtualModelRow>
   updateVirtualModel(id: string, patch: Partial<NewVirtualModelInput>): Promise<VirtualModelRow | null>
   deleteVirtualModel(id: string): Promise<boolean>
+  checkForUpdates(): Promise<UpdateCheckResult>
+  startUpdateDownload(dl: UpdateDownloadAction): Promise<void>
+  getUpdateStatus(): Promise<UpdateDownloadState>
+  openUpdateInstaller(): Promise<boolean>
+  onUpdateReady(cb: () => void): () => void
 }
 
 export const IPC_CHANNELS = {
@@ -90,6 +95,12 @@ export const IPC_CHANNELS = {
     create: 'virtual-model:create',
     update: 'virtual-model:update',
     delete: 'virtual-model:delete'
+  },
+  update: {
+    check: 'update:check',
+    getStatus: 'update:get-status',
+    startDownload: 'update:start-download',
+    openInstaller: 'update:open-installer'
   }
 } as const
 
@@ -132,6 +143,30 @@ export interface GatewayStatus {
 export interface GatewayKeyInfo {
   masked: string
   present: boolean
+}
+
+export interface UpdateCheckResult {
+  latestVersion: string
+  currentVersion: string
+  hasUpdate: boolean
+  releaseUrl: string
+  releaseName: string
+  publishedAt: string
+  downloadUrl?: string
+  assetName?: string
+  digest?: string
+}
+
+export type UpdateDownloadState =
+  | { status: 'idle' }
+  | { status: 'downloading'; progress: number }
+  | { status: 'downloaded'; filePath: string }
+  | { status: 'error'; message: string }
+
+export type UpdateDownloadAction = {
+  downloadUrl: string
+  assetName: string
+  digest?: string
 }
 
 
