@@ -84,6 +84,24 @@ Artifact names use a snake_case convention via the electron-builder
 (Windows) and `Meow_gateway_1.2.3_x86_64.AppImage` /
 `Meow_gateway_1.2.3_amd64.deb` (Linux).
 
+### In-app update check
+
+The packaged app can check for updates in-app. From the sidebar footer, a user
+clicks **Check update** to read the latest GitHub release. The check queries
+`https://api.github.com/repos/meow-home/meow-router/releases/latest`, reads the
+newest stable (non-prerelease, non-draft) `v*` tag, and compares it against the
+current app version. If a newer version is found, the app selects the platform
+installer by the snake_case naming convention above
+(`Meow_gateway_<version>_x64.exe` on Windows, `.dmg` on macOS,
+`.AppImage`/`.deb` on Linux), verifies its SHA-256 digest when the release
+exposes one, downloads it, opens it, and emits an OS notification when a
+background download completes.
+
+> Consumers must ensure the per-OS installers are attached as GitHub Release
+> assets for the in-app checker to locate them. Package maintainers publishing
+> new releases MUST attach the installers (the release workflow already does
+> this) — otherwise the in-app checker cannot find a matching asset.
+
 > NOTE: builds are currently unsigned. Code signing / notarization secrets are
 > not configured yet, so the app bundles are produced but not signed. Add
 > `CSC_LINK` / `CSC_KEY_PASSWORD` (and Apple notarization credentials) to the
