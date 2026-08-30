@@ -127,6 +127,7 @@ app.whenReady().then(async () => {
   // above, so this safe-guards against the callback firing before the window
   // exists.
   updateManager.onDownloadComplete(() => {
+    showWindow()
     if (mainWindow) {
       mainWindow.webContents.send('update:ready')
     }
