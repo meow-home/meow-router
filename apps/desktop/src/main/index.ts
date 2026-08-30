@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { IPC_CHANNELS, type IpcResult, type PingPayload, type PingResult } from '../shared/ipc'
+import { IPC_CHANNELS, type IpcResult, type PingPayload, type PingResult, type UpdateCheckResult, type UpdateDownloadState, type UpdateDownloadAction } from '../shared/ipc'
 import { bootstrapMeowGatewayApp, type MeowGatewayApp } from './app/bootstrap'
 import { createTray, destroyTray, hasTray } from './tray'
+import { createUpdateManager } from './update/electronUpdate'
 
 let meowApp: MeowGatewayApp | undefined
 let mainWindow: BrowserWindow | null = null
@@ -74,6 +75,38 @@ app.whenReady().then(async () => {
     return { ok: true, data: app.getVersion() }
   })
 
+  // Update check/download IPC (Task 4). Wires the UpdateManager to the main
+  // process with real Electron deps (net/fs/shell/Notification) and exposes the
+  // update actions to the preload/renderer.
+  const updateManager = createUpdateManager()
+
+  ipcMain.handle(IPC_CHANNELS.update.check, async (): Promise<IpcResult<UpdateCheckResult>> => {
+    try {
+      return { ok: true, data: await updateManager.checkForUpdate() }
+    } catch (err) {
+      return { ok: false, error: { message: err instanceof Error ? err.message : 'Check failed', code: 'UPDATE_CHECK_FAILED' } }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.update.getStatus, (): IpcResult<UpdateDownloadState> => {
+    return { ok: true, data: updateManager.getStatus() }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.update.startDownload, (_e, dl: UpdateDownloadAction): Promise<IpcResult<void>> => {
+    if (!dl || typeof dl.downloadUrl !== 'string' || dl.downloadUrl.length === 0 || typeof dl.assetName !== 'string' || dl.assetName.length === 0) {
+      return Promise.resolve({ ok: false, error: { message: 'Invalid download input.', code: 'INVALID_UPDATE_DOWNLOAD' } })
+    }
+    return (async () => {
+      await updateManager.startDownload({ downloadUrl: dl.downloadUrl, assetName: dl.assetName }, dl.digest)
+      return { ok: true, data: undefined }
+    })()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.update.openInstaller, async (): Promise<IpcResult<boolean>> => {
+    const ok = await updateManager.openInstaller()
+    return { ok: true, data: ok }
+  })
+
   // Remove the native File/Edit/View... menu bar; the app is a self-contained
   // workspace with its own in-app navigation.
   Menu.setApplicationMenu(null)
@@ -88,6 +121,16 @@ app.whenReady().then(async () => {
   }
 
   mainWindow = createWindow()
+
+  // Notify the renderer (via the preload's `onUpdateReady`) when a download
+  // completes so the UI can prompt the user to install. `mainWindow` is set
+  // above, so this safe-guards against the callback firing before the window
+  // exists.
+  updateManager.onDownloadComplete(() => {
+    if (mainWindow) {
+      mainWindow.webContents.send('update:ready')
+    }
+  })
 
   // Add the app to the system tray so it keeps running (and serving) when the
   // window is closed. If the platform has no tray, this is a no-op.
