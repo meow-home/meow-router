@@ -17,4 +17,9 @@ describe('Sidebar', () => {
     render(<Sidebar active="providers" onSelect={vi.fn()} running />)
     expect(await screen.findByText(/v0\.1\.0/)).toBeTruthy()
   })
+
+  it('renders a Check update button in the footer', () => {
+    render(<Sidebar active="providers" onSelect={vi.fn()} running />)
+    expect(screen.getByText(/Check update/i)).toBeTruthy()
+  })
 })

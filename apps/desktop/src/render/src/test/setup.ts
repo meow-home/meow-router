@@ -32,7 +32,12 @@ Object.defineProperty(window, 'meowGateway', {
     getVirtualModel: vi.fn(),
     createVirtualModel: vi.fn(),
     updateVirtualModel: vi.fn(),
-    deleteVirtualModel: vi.fn()
+    deleteVirtualModel: vi.fn(),
+    checkForUpdates: vi.fn().mockResolvedValue({ latestVersion: '0.3.0', currentVersion: '0.3.0', hasUpdate: false, releaseUrl: '', releaseName: '', publishedAt: '' }),
+    startUpdateDownload: vi.fn().mockResolvedValue(undefined),
+    getUpdateStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
+    openUpdateInstaller: vi.fn().mockResolvedValue(false),
+    onUpdateReady: vi.fn().mockReturnValue(() => {})
   },
   configurable: true
 })
