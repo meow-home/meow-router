@@ -41,7 +41,9 @@ import type { WindowApi, UpdateCheckResult, UpdateDownloadState, UpdateDownloadA
 // @ts-expect-error — missing required field
 const _bad: UpdateCheckResult = { latestVersion: '0.1.0' }
 
-const good: UpdateCheckResult = {
+// Prefixed with underscore so tsc (noUnusedLocals) does not reject them;
+// they are type-level assertions, not runtime values.
+const _good: UpdateCheckResult = {
   latestVersion: '0.4.0',
   currentVersion: '0.3.0',
   hasUpdate: true,
@@ -53,8 +55,8 @@ const good: UpdateCheckResult = {
   digest: 'sha256:deadbeef'
 }
 
-const state: UpdateDownloadState = { status: 'downloading', progress: 0.5 }
-const dl: UpdateDownloadAction = { downloadUrl: 'https://x', assetName: 'a.exe', digest: 'sha256:deadbeef' }
+const _state: UpdateDownloadState = { status: 'downloading', progress: 0.5 }
+const _dl: UpdateDownloadAction = { downloadUrl: 'https://x', assetName: 'a.exe', digest: 'sha256:deadbeef' }
 
 declare const api: WindowApi
 api.checkForUpdates(): Promise<UpdateCheckResult>
