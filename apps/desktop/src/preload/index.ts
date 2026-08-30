@@ -12,7 +12,10 @@ import {
   type GatewayKeyInfo,
   type IpcResult,
   type DashboardTotals,
-  type UsagePage
+  type UsagePage,
+  type UpdateCheckResult,
+  type UpdateDownloadState,
+  type UpdateDownloadAction
 } from '../shared/ipc'
 import type {
   VirtualModelRow,
@@ -67,7 +70,16 @@ const api: WindowApi = {
   getVirtualModel: (id) => invoke<VirtualModelRow | null>(IPC_CHANNELS.virtualModel.get, id),
   createVirtualModel: (input: NewVirtualModelInput) => invoke<VirtualModelRow>(IPC_CHANNELS.virtualModel.create, input),
   updateVirtualModel: (id, patch) => invoke<VirtualModelRow | null>(IPC_CHANNELS.virtualModel.update, id, patch),
-  deleteVirtualModel: (id) => invoke<boolean>(IPC_CHANNELS.virtualModel.delete, id)
+  deleteVirtualModel: (id) => invoke<boolean>(IPC_CHANNELS.virtualModel.delete, id),
+  checkForUpdates: () => invoke<UpdateCheckResult>(IPC_CHANNELS.update.check),
+  startUpdateDownload: (dl: UpdateDownloadAction) => invoke<void>(IPC_CHANNELS.update.startDownload, dl),
+  getUpdateStatus: () => invoke<UpdateDownloadState>(IPC_CHANNELS.update.getStatus),
+  openUpdateInstaller: () => invoke<boolean>(IPC_CHANNELS.update.openInstaller),
+  onUpdateReady: (cb: () => void) => {
+    const listener = () => cb()
+    ipcRenderer.on('update:ready', listener)
+    return () => ipcRenderer.removeListener('update:ready', listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('meowGateway', api)
