@@ -20,6 +20,10 @@
 
   html { scroll-behavior: smooth; }
 
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+
   body {
     margin: 0;
     background: var(--bg);
@@ -436,27 +440,6 @@ pnpm test</code></div>
     <p class="copyright">&copy; 2026 Meow Gateway. All rights reserved.</p>
   </div>
 </footer>
-
-<script>
-  // Smooth scroll for in-page anchors (respects prefers-reduced-motion).
-  (function () {
-    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var links = document.querySelectorAll('a[href^="#"]');
-    for (var i = 0; i < links.length; i++) {
-      links[i].addEventListener('click', function (e) {
-        if (!reduce) return;
-        var id = this.getAttribute('href');
-        if (id && id.length > 1) {
-          var target = document.querySelector(id);
-          if (target) {
-            e.preventDefault();
-            target.scrollIntoView();
-          }
-        }
-      });
-    }
-  })();
-</script>
 
 </body>
 </html>
