@@ -42,6 +42,15 @@
 
 ## 2. Process boundaries
 
+### Single instance
+
+Meow Gateway is a background service, so only one instance may run at a time.
+The main process calls `app.requestSingleInstanceLock()` before booting anything.
+If another copy already holds the lock (e.g. the user double-clicks the app
+icon), the second process quits immediately and never creates a window, tray
+icon, or gateway server. The primary instance receives a `second-instance`
+event and re-focuses its existing window, so the user lands on the running app.
+
 ### Renderer
 
 Responsible for presentation and user interaction.

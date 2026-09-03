@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { IPC_CHANNELS, type IpcResult, type PingPayload, type PingResult, type UpdateCheckResult, type UpdateDownloadState, type UpdateDownloadAction } from '../shared/ipc'
 import { bootstrapMeowGatewayApp, type MeowGatewayApp } from './app/bootstrap'
+import { acquireSingleInstanceLock } from './app/singleInstance'
 import { createTray, destroyTray, hasTray } from './tray'
 import { createUpdateManager } from './update/electronUpdate'
 
@@ -62,6 +63,14 @@ function hideWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  // Become the single running instance up front. If another copy is already
+  // running (e.g. the user double-clicked the icon), `requestSingleInstanceLock`
+  // returns false, we quit immediately, and NOTHING below runs: no IPC handlers,
+  // no gateway, no window, no second tray icon.
+  if (!acquireSingleInstanceLock({ onSecondInstance: showWindow })) {
+    return
+  }
+
   ipcMain.handle(IPC_CHANNELS.ping, (_e, payload: PingPayload): PingResult => {
     return { pong: 'pong', echo: payload.from }
   })
