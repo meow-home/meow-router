@@ -166,6 +166,57 @@ describe('OpenAICompatibleAdapter', () => {
   })
 })
 
+  it('normalizes a mid-stream socket close (FIN) to a retryable PROVIDER_UNAVAILABLE', async () => {
+    // Real-world gateway bug: the upstream provider closes the TCP socket with
+    // a FIN after emitting a few SSE chunks but before the chunked terminator /
+    // `[DONE]`. undici raises SocketError('other side closed') on the outbound
+    // fetch (surfaced as TypeError: terminated, cause UND_ERR_SOCKET). The
+    // adapter must map it to a normalized ProviderError so the gateway can
+    // retry/fall back instead of propagating a raw TypeError that the client
+    // SDK wraps as AI_APICallError('other side closed').
+    const encoder = new TextEncoder()
+    const midStreamError = new TypeError('terminated', {
+      cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
+    })
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'))
+        // Mid-stream failure: the provider closes the socket (FIN) before the
+        // chunked terminator / `[DONE]` arrives.
+        setTimeout(() => controller.error(midStreamError), 0)
+      }
+    })
+    const fetcher: Fetcher = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/event-stream' },
+      text: async () => '',
+      json: async () => ({}),
+      body
+    })
+    const adapter = createOpenAICompatibleAdapter('openai', fetcher)
+    const seen: Array<'content_delta' | 'tool_call_delta' | 'finish'> = []
+    try {
+      for await (const c of adapter.chat(ctx(), {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true
+      })) {
+        seen.push(c.kind)
+      }
+      throw new Error('expected the socket close to surface as an error')
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProviderError)
+      const e = err as ProviderError
+      expect(e.type).toBe('PROVIDER_UNAVAILABLE')
+      expect(e.retryable).toBe(true)
+      // The raw undici message must not leak the cryptic 'other side closed'.
+      expect(String(e.message)).not.toMatch(/other side closed/i)
+    }
+    // The first chunk must have been delivered before the mid-stream failure.
+    expect(seen).toContain('content_delta')
+  })
+
 // Run the shared contract suite against the OpenAI-compatible adapter, driven by
 // a deterministic in-memory mock fetcher (fully offline).
 defineAdapterContractTests({

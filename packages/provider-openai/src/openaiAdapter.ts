@@ -173,7 +173,7 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
     }
 
     if (request.stream) {
-      yield* this.parseSseStream(res)
+      yield* this.parseSseStream(res, ctx.signal)
     } else {
       const data = (await res.json()) as {
         id?: string
@@ -202,32 +202,51 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   private async *parseSseStream(
-    res: Awaited<ReturnType<Fetcher>>
+    res: Awaited<ReturnType<Fetcher>>,
+    signal?: AbortSignal
   ): AsyncIterable<NormalizedChatChunk> {
-    const reader = (res.body as ReadableStream<Uint8Array> | undefined)?.getReader()
-    if (!reader) {
-      // Fallback: if the response body isn't a readable stream, read text and split.
-      const text = await res.text()
-      yield* this.parseSseText(text)
-      return
-    }
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let done = false
-    while (!done) {
-      const { value, done: stop } = await reader.read()
-      done = stop
-      buffer += decoder.decode(value, { stream: !done })
-      // process complete SSE event blocks
-      let idx: number
-      while ((idx = buffer.indexOf('\n\n')) >= 0) {
-        const block = buffer.slice(0, idx)
-        buffer = buffer.slice(idx + 2)
-        for (const chunk of this.parseEventLines(block)) yield chunk
+    try {
+      const reader = (res.body as ReadableStream<Uint8Array> | undefined)?.getReader()
+      if (!reader) {
+        // Fallback: if the response body isn't a readable stream, read text and split.
+        const text = await res.text()
+        yield* this.parseSseText(text)
+        return
       }
-    }
-    if (buffer.trim()) {
-      for (const chunk of this.parseEventLines(buffer)) yield chunk
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let done = false
+      while (!done) {
+        const { value, done: stop } = await reader.read()
+        done = stop
+        buffer += decoder.decode(value, { stream: !done })
+        // process complete SSE event blocks
+        let idx: number
+        while ((idx = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, idx)
+          buffer = buffer.slice(idx + 2)
+          for (const chunk of this.parseEventLines(block)) yield chunk
+        }
+      }
+      if (buffer.trim()) {
+        for (const chunk of this.parseEventLines(buffer)) yield chunk
+      }
+    } catch {
+      // A provider that closes the socket mid-stream (a TCP FIN before the
+      // chunked terminator / [DONE]) makes undici's fetch throw
+      // `TypeError: terminated` with `cause: SocketError('other side closed')`.
+      // Normalize it (and any other mid-stream read failure) so the gateway can
+      // retry/fall back instead of surfacing a raw TypeError that the client
+      // SDK wraps as AI_APICallError. Drop the cryptic socket message; give the
+      // user a clear reason instead.
+      if (signal?.aborted) {
+        throw new ProviderError({ type: 'TIMEOUT', message: 'Request aborted.', retryable: false })
+      }
+      throw new ProviderError({
+        type: 'PROVIDER_UNAVAILABLE',
+        message: 'Provider closed the stream unexpectedly.',
+        retryable: true
+      })
     }
   }
 
