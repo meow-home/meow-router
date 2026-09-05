@@ -296,6 +296,122 @@ describe('chat completions (T304)', () => {
   })
 })
 
+describe('anthropic messages API (/v1/messages)', () => {
+  it('non-streaming request returns an Anthropic message', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps)
+    try {
+      const res = await fetch(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as Record<string, unknown>
+      expect(body.type).toBe('message')
+      expect(body.role).toBe('assistant')
+      expect(body.content).toEqual([{ type: 'text', text: 'Hello from openai ' }])
+      expect(harness.usages).toHaveLength(1)
+      expect(harness.usages[0].status).toBe('success')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('streaming request returns Anthropic SSE events', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps)
+    try {
+      const res = await fetch(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }], stream: true })
+      })
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/event-stream')
+      const text = await res.text()
+      const frames = text.split('\n').filter((l) => l.startsWith('data:'))
+      expect(frames[frames.length - 1].trim()).toBe('data: [DONE]')
+      const parsed = frames
+        .filter((f) => f.trim() !== 'data: [DONE]')
+        .map((f) => JSON.parse(f.slice(5).trim()) as { type: string })
+      const types = parsed.map((p) => p.type)
+      expect(types).toContain('message_start')
+      expect(types).toContain('content_block_delta')
+      expect(types).toContain('message_delta')
+      expect(types).toContain('message_stop')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('unknown model returns MODEL_NOT_FOUND', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps)
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'nope', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(404)
+      expect(body.error.code).toBe('MODEL_NOT_FOUND')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('malformed request returns a client error', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps)
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] }) // missing max_tokens
+      })
+      expect(status).toBe(400)
+      expect(body.error.code).toBe('INVALID_REQUEST')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('provider auth failure maps to AUTH_ERROR', async () => {
+    const harness = makeHarness({ adapter: makeFakeAdapter('openai', { fail: true }) })
+    const { server, addr } = await startServer(harness.deps)
+    try {
+      const { status, body } = await fetchJson(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(401)
+      expect(body.error.code).toBe('PROVIDER_AUTH_FAILED')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('requires the gateway key when auth is on', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer({
+      ...harness.deps,
+      getAuthPolicy: async () => ({ enabled: true, key: 'mgw_0123456789abcdef0123456789ab1f4a' })
+    })
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] })
+      })
+      expect(status).toBe(401)
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
 describe('streaming (T305)', () => {
   it('chunks arrive incrementally as SSE data frames', async () => {
     const harness = makeHarness()

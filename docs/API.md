@@ -40,7 +40,7 @@ Returns:
 ```json
 {
   "status": "ok",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "gateway": {
     "running": true
   }
@@ -92,6 +92,59 @@ Example:
   "stream": true
 }
 ```
+
+## POST /v1/messages (Anthropic Messages API)
+
+Anthropic-native clients (e.g. Claude Code) talk to the gateway over the
+Anthropic Messages wire format. The gateway translates the request to its
+provider-neutral contract, dispatches to the selected provider, then serializes
+the response back into Anthropic Messages format.
+
+Input accepts the common Anthropic Messages subset:
+
+- model
+- max_tokens (required)
+- messages
+- system
+- temperature
+- top_p
+- stream
+- tools
+- tool_choice
+- stop_sequences
+
+Example:
+
+```json
+{
+  "model": "meo-claude",
+  "max_tokens": 1024,
+  "messages": [
+    { "role": "user", "content": "Explain this function." }
+  ],
+  "stream": true
+}
+```
+
+Non-streaming returns an Anthropic `message` object:
+
+```json
+{
+  "id": "…",
+  "type": "message",
+  "role": "assistant",
+  "model": "meo-claude",
+  "content": [{ "type": "text", "text": "…" }],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 5, "output_tokens": 2 }
+}
+```
+
+Streaming uses Server-Sent Events with the Anthropic event sequence
+(`message_start`, `content_block_start`, `content_block_delta`,
+`content_block_stop`, `message_delta`, `message_stop`), terminated by
+`data: [DONE]`.
 
 ## Streaming
 

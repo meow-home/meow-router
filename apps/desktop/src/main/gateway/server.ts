@@ -24,6 +24,13 @@ import { toGatewayErrorBody, httpStatusFor } from './errors'
 import { parseJsonBody, validateChatCompletionsBody, createBodyReader } from './validate'
 import { chunkToSseData, createRequestId } from './sse'
 import { checkAuth } from './auth'
+import {
+  parseAnthropicMessagesBody,
+  validateAnthropicMessagesBody,
+  anthropicToNormalized,
+  anthropicSseFromChunks,
+  anthropicNonStreamingResponse
+} from './anthropic'
 
 export const DEFAULT_PORT = 8317
 export const DEFAULT_HOST = '127.0.0.1'
@@ -51,7 +58,7 @@ export interface GatewayServer {
 export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServerOptions = {}): GatewayServer {
   const host = opts.host ?? DEFAULT_HOST
   const port = opts.port ?? DEFAULT_PORT
-  const version = opts.version ?? '0.4.0'
+  const version = opts.version ?? '0.5.0'
   const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const logger = deps.logger ?? nullLogger
 
@@ -107,6 +114,12 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       // POST /v1/chat/completions
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
         await handleChatCompletions(req, res, deps, requestId, startedAt)
+        return
+      }
+
+      // POST /v1/messages (Anthropic Messages API)
+      if (req.method === 'POST' && url.pathname === '/v1/messages') {
+        await handleAnthropicMessages(req, res, deps, requestId, startedAt)
         return
       }
 
@@ -183,6 +196,267 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     } finally {
       clearTimeout(timeout)
     }
+  }
+
+  // Anthropic Messages API (POST /v1/messages). Translates the Anthropic wire
+  // format to the provider-neutral request, dispatches through the same route
+  // resolution / fallback machinery as chat completions, then serializes the
+  // normalized chunks back into Anthropic Messages SSE or JSON.
+  async function handleAnthropicMessages(
+    req: IncomingMessage,
+    res: ServerResponse,
+    deps: GatewayDependencies,
+    requestId: string,
+    startedAt: number
+  ): Promise<void> {
+    const bodyReader = createBodyReader()
+    const raw = await bodyReader.read(req)
+    const body = validateAnthropicMessagesBody(parseAnthropicMessagesBody(raw))
+
+    const resolved = await deps.resolveModel(body.model)
+    if (!resolved) {
+      throw new ProviderError({ type: 'MODEL_NOT_FOUND', message: `Unknown model: ${body.model}`, retryable: false })
+    }
+
+    let routes: RouteCandidate[]
+    if (deps.resolveRoutes) {
+      const rl = await deps.resolveRoutes(body.model)
+      routes = rl.routes.length > 0 ? rl.routes : [primaryRoute(resolved)]
+    } else {
+      routes = [primaryRoute(resolved)]
+    }
+
+    const normalized = anthropicToNormalized(body)
+    // The provider sees the real provider model id, not the virtual model id.
+    normalized.model = routes[0].providerModelId
+
+    const controller = new AbortController()
+    const onClose = () => controller.abort()
+    res.on('close', onClose)
+    res.once('finish', () => res.off('close', onClose))
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
+
+    try {
+      if (body.stream) {
+        return await handleAnthropicStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
+      }
+      return await handleAnthropicNonStreamRoutes(res, deps, routes, controller.signal, normalized, body.model, requestId, startedAt)
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  // Streaming Anthropic dispatch with fallback. Fallback only happens BEFORE any
+  // chunk is written; once the stream starts we commit to that route.
+  async function handleAnthropicStreamRoutes(
+    res: ServerResponse,
+    deps: GatewayDependencies,
+    routes: RouteCandidate[],
+    signal: AbortSignal,
+    normalized: NormalizedChatRequest,
+    virtualModelId: string,
+    requestId: string,
+    _startedAt: number
+  ): Promise<void> {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive'
+    })
+
+    let lastErr: unknown
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i]
+      if (res.writableEnded || resDestroyed(res)) break
+      const attemptStart = Date.now()
+      try {
+        const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
+        let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
+        let status: GatewayUsage['status'] = 'success'
+        for await (const frame of anthropicSseFromChunks(
+          adapter.chat(ctx, { ...normalized, model: route.providerModelId }),
+          route.providerModelId
+        )) {
+          if (ctx.signal.aborted) {
+            status = 'aborted'
+            break
+          }
+          res.write(`data: ${frame}\n\n`)
+        }
+        if (ctx.signal.aborted) status = 'aborted'
+        if (status === 'success' && !res.destroyed && !res.writableEnded) {
+          res.write('data: [DONE]\n\n')
+        }
+        if (!res.destroyed && !res.writableEnded) {
+          res.end()
+        }
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          cachedTokens: usage?.cachedTokens ?? 0,
+          latencyMs: Date.now() - attemptStart,
+          status,
+          routeAttempt: i
+        })
+        logger.info('anthropic stream route', { requestId, route: i, providerId: route.providerId, status })
+        return
+      } catch (err) {
+        lastErr = err
+        const code = err instanceof ProviderError ? err.type : 'STREAM_ERROR'
+        if (!isRetryable(err) || resDestroyed(res) || res.writableEnded) {
+          if (!res.destroyed && !res.writableEnded) {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: toGatewayErrorBody(err).error })}\n\n`)
+            res.write('data: [DONE]\n\n')
+            res.end()
+          }
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'error',
+            errorCode: code,
+            errorMessage: err instanceof Error ? err.message : String(err),
+            routeAttempt: i
+          })
+          logger.info('anthropic stream route error', { requestId, route: i, providerId: route.providerId, code })
+          return
+        }
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedTokens: 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'error',
+          errorCode: code,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          routeAttempt: i
+        })
+        logger.warn('anthropic stream route fallback', { requestId, route: i, providerId: route.providerId, code })
+      }
+    }
+
+    const err = lastErr ?? new ProviderError({ type: 'STREAM_ERROR', message: 'No route succeeded.', retryable: false })
+    if (!res.destroyed && !res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: toGatewayErrorBody(err).error })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      res.end()
+    }
+  }
+
+  // Non-streaming Anthropic dispatch with fallback. Buffers content and only
+  // writes on success so fallback can be clean before any bytes reach the client.
+  async function handleAnthropicNonStreamRoutes(
+    res: ServerResponse,
+    deps: GatewayDependencies,
+    routes: RouteCandidate[],
+    signal: AbortSignal,
+    normalized: NormalizedChatRequest,
+    virtualModelId: string,
+    requestId: string,
+    startedAt: number
+  ): Promise<void> {
+    let lastErr: unknown
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i]
+      const attemptStart = Date.now()
+      try {
+        const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
+        const response = await anthropicNonStreamingResponse(
+          adapter.chat(ctx, { ...normalized, model: route.providerModelId }),
+          route.providerModelId,
+          requestId
+        )
+        if (ctx.signal.aborted) {
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'aborted',
+            routeAttempt: i
+          })
+          return
+        }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(response))
+        const usage = (response.usage as { input_tokens?: number; output_tokens?: number }) ?? {}
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: usage.input_tokens ?? 0,
+          outputTokens: usage.output_tokens ?? 0,
+          cachedTokens: 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'success',
+          routeAttempt: i
+        })
+        logger.info('anthropic completion done', { requestId, route: i, providerId: route.providerId, latencyMs: Date.now() - startedAt })
+        return
+      } catch (err) {
+        lastErr = err
+        const code = err instanceof ProviderError ? err.type : 'INTERNAL_ERROR'
+        if (!isRetryable(err)) {
+          const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+          if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
+          res.end(JSON.stringify(toGatewayErrorBody(err)))
+          await recordUsage(deps, {
+            requestId,
+            virtualModelId,
+            providerId: route.providerId,
+            providerModelId: route.providerModelId,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            latencyMs: Date.now() - attemptStart,
+            status: 'error',
+            errorCode: code,
+            errorMessage: err instanceof Error ? err.message : String(err),
+            routeAttempt: i
+          })
+          logger.error('anthropic completion error', { requestId, route: i, error: err instanceof Error ? err.message : String(err) })
+          return
+        }
+        await recordUsage(deps, {
+          requestId,
+          virtualModelId,
+          providerId: route.providerId,
+          providerModelId: route.providerModelId,
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedTokens: 0,
+          latencyMs: Date.now() - attemptStart,
+          status: 'error',
+          errorCode: code,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          routeAttempt: i
+        })
+        logger.warn('anthropic completion fallback', { requestId, route: i, providerId: route.providerId, code })
+      }
+    }
+
+    const err = lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'All routes failed.', retryable: false })
+    const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+    if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(toGatewayErrorBody(err)))
   }
 
   // Build a per-route context and validate credential existence.
