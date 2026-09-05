@@ -58,7 +58,7 @@ export interface GatewayServer {
 export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServerOptions = {}): GatewayServer {
   const host = opts.host ?? DEFAULT_HOST
   const port = opts.port ?? DEFAULT_PORT
-  const version = opts.version ?? '0.5.0'
+  const version = opts.version ?? '0.5.1'
   const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const logger = deps.logger ?? nullLogger
 
@@ -275,7 +275,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
         let status: GatewayUsage['status'] = 'success'
         for await (const frame of anthropicSseFromChunks(
           adapter.chat(ctx, { ...normalized, model: route.providerModelId }),
-          route.providerModelId
+          virtualModelId
         )) {
           if (ctx.signal.aborted) {
             status = 'aborted'
@@ -376,7 +376,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
         const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
         const response = await anthropicNonStreamingResponse(
           adapter.chat(ctx, { ...normalized, model: route.providerModelId }),
-          route.providerModelId,
+          virtualModelId,
           requestId
         )
         if (ctx.signal.aborted) {
