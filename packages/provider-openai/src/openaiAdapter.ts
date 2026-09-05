@@ -186,6 +186,29 @@ class OpenAICompatibleAdapter implements ProviderAdapter {
       if (content) {
         yield { id, kind: 'content_delta', delta: content }
       }
+      if (Array.isArray(choice?.message?.tool_calls)) {
+        const toolCalls = choice.message.tool_calls as unknown as Array<{
+          index?: number
+          id?: string
+          type?: string
+          function?: { name?: string; arguments?: string }
+        }>
+        let fallbackIndex = 0
+        for (const tc of toolCalls) {
+          if (tc?.function === undefined) continue
+          yield {
+            id,
+            kind: 'tool_call_delta',
+            toolCall: {
+              index: tc.index ?? fallbackIndex,
+              id: tc.id,
+              name: tc.function.name,
+              arguments: tc.function.arguments
+            }
+          }
+          fallbackIndex++
+        }
+      }
       yield {
         id,
         kind: 'finish',

@@ -1,6 +1,6 @@
 {
   "name": "@meow-gateway/desktop",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Meow Gateway - local AI model gateway & provider manager for coding agents.",
   "homepage": "https://github.com/meow-home/meow-router",
   "author": {

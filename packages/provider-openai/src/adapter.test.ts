@@ -164,6 +164,48 @@ describe('OpenAICompatibleAdapter', () => {
     expect(finish!.finishReason).toBe('stop')
     expect(finish!.usage?.outputTokens).toBe(2)
   })
+
+  it('non-streaming emits tool_call_delta for message.tool_calls', async () => {
+    // Real gateway bug: non-streaming responses that carry `message.tool_calls`
+    // were silently dropped, yielding only a `finish` chunk with
+    // finishReason='tool_calls' but no tool_call_delta. The Anthropic layer then
+    // serialized `content:[]` + stop_reason 'tool_use', which Claude Code could
+    // not parse ("The model's tool call could not be parsed").
+    const fetcher: Fetcher = async () =>
+      jsonResponse(200, {
+        id: 'chatcmpl-t1',
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_99',
+                  type: 'function',
+                  function: { name: 'bash', arguments: '{"command":"echo hi"}' }
+                }
+              ]
+            },
+            finish_reason: 'tool_calls'
+          }
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5 }
+      })
+    const adapter = createOpenAICompatibleAdapter('openai', fetcher)
+    const chunks: NormalizedChatChunk[] = []
+    for await (const c of adapter.chat(ctx(), { model: 'gpt-4o', messages: [{ role: 'user', content: 'Run echo hi' }] })) {
+      chunks.push(c)
+    }
+    const toolDeltas = chunks.filter((c) => c.kind === 'tool_call_delta')
+    expect(toolDeltas.length).toBeGreaterThan(0)
+    expect(toolDeltas[0].toolCall).toMatchObject({
+      id: 'call_99',
+      name: 'bash',
+      arguments: '{"command":"echo hi"}'
+    })
+    const finish = chunks.find((c) => c.kind === 'finish')
+    expect(finish?.finishReason).toBe('tool_calls')
+  })
 })
 
   it('normalizes a mid-stream socket close (FIN) to a retryable PROVIDER_UNAVAILABLE', async () => {
