@@ -168,28 +168,39 @@ Header bắt buộc: `User-Agent`, `x-goog-api-client` (port constants trong met
 ## Main-process wiring
 
 ### oauth/oauthTokenStore.ts
-Wrap `CredentialService`, bundle JSON qua secure store (cùng store, namespace riêng). Ref riêng `oauth:antigravity:<accountId>` (tách khỏi `provider:<id>` của API key).
+Wrap `CredentialService`, bundle JSON qua secure store. Ref dùng `provider:<providerId>` (cùng quy ước gateway resolve), vì **1 provider = 1 account**.
 
 ### oauth/oauthLoginService.ts
 `OAuthLoginService`: 
 - `startOAuthLogin(type)` → build authUrl, mở browser (`shell.openExternal`), lưu state pending.
-- `completeOAuthLogin()` → chờ callback, exchange, getUserInfo, lưu bundle, trả metadata an toàn.
-- `listAccounts(type)` → metadata an toàn (email, displayName, expiresAt, valid) — **không token**.
-- `logoutAccount(type, ref)` → xóa bundle.
+- `completeOAuthLogin()` → chờ callback, exchange, getUserInfo → **tạo provider** (type `antigravity`, displayName = email) → lưu bundle vào `provider:<providerId>` → trả metadata an toàn.
+- `listAccounts(type)` → liệt kê provider type = antigravity, metadata an toàn (email, displayName, expiresAt, valid) — **không token**.
+- `logoutAccount(providerId)` → xóa credential + (tùy chọn) provider.
 
 ### bootstrap.ts
 - Tạo `OAuthTokenStore` + `OAuthTokenManager`, register `createAntigravityAdapter(manager)`.
 - Thêm nhánh IPC `IPC_CHANNELS.oauth.*` (validate input — AGENTS.md).
 
 ### Gateway server.ts
-Không đổi. Account Antigravity tạo như provider type `antigravity`, `credential_ref` trỏ bundle JSON; adapter tự refresh/parse, cache projectId.
+Không đổi.
+
+### Map account → provider (1 provider = 1 account)
+Đã quyết định: **mỗi provider Antigravity gắn đúng MỘT account Google**. Nhiều account = tạo nhiều provider (type `antigravity`). Điều này khớp kiến trúc hiện tại (provider ↔ 1 credential) và **không cần sửa gateway**:
+
+- Gateway gọi `getCredential(refFor(providerId))` = `provider:<id>`. 
+- Với Antigravity, bundle JSON lưu **qua cùng ref `provider:<id>`** (không phải ref `oauth:*` riêng). `OAuthTokenStore` map theo provider ref.
+- OAuth login = **tạo provider** (type `antigravity`) + lưu bundle vào `provider:<id>`.
+- Sign-out = xóa credential của provider đó.
+- Adapter đọc bundle từ `ctx.credentialRef` (`provider:<id>`) qua manager.
+
+Do đó `OAuthTokenStore.set/get/delete` dùng ref `provider:<providerId>`; không cần namespace `oauth:*` tách biệt. Adapter tự refresh/parse, cache projectId.
 
 ## IPC + Preload + UI
 
 ### shared/ipc.ts
 ```ts
 interface OAuthAccountMeta {
-  ref: string; email: string; displayName: string;
+  providerId: string; email: string; displayName: string;
   expiresAt: number; valid: boolean;
 }
 IPC_CHANNELS.oauth = {
