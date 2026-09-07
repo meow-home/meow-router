@@ -4,6 +4,8 @@ export interface FetcherResponse {
   headers: { get(name: string): string | null }
   text(): Promise<string>
   json(): Promise<unknown>
+  /** Optional streaming body reader for SSE/NDJSON responses. */
+  body?: ReadableStream<Uint8Array>
 }
 
 export interface FetcherInit {
@@ -30,6 +32,14 @@ export function defaultFetcher(): Fetcher {
       body = new URLSearchParams(form).toString()
       headers['Content-Type'] = 'application/x-www-form-urlencoded'
     }
-    return fetch(url, { ...rest, body, headers }) as unknown as FetcherResponse
+    const res = await fetch(url, { ...rest, body, headers })
+    return {
+      ok: res.ok,
+      status: res.status,
+      headers: { get: (name) => res.headers.get(name) },
+      text: () => res.text(),
+      json: () => res.json(),
+      body: (res.body as ReadableStream<Uint8Array> | null) ?? undefined
+    }
   }
 }

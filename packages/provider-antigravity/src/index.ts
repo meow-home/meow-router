@@ -8,3 +8,4 @@ export {
   type AntigravityMetadata
 } from './metadata'
 export { resolveProjectId, type ResolveProjectParams } from './project'
+export { createAntigravityAdapter, type AntigravityAdapterOptions } from './adapter'
