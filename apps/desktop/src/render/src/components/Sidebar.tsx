@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import logo from '../assets/logo.png'
 import { Pill, Button } from './ui'
 
-export type View = 'providers' | 'models' | 'virtualmodels' | 'gateway' | 'dashboard'
+export type View = 'providers' | 'models' | 'virtualmodels' | 'gateway' | 'dashboard' | 'oauthaccounts'
 
 const items: Array<{ id: View; label: string; index: string }> = [
   { id: 'gateway', label: 'Gateway', index: '01' },
   { id: 'providers', label: 'Providers', index: '02' },
   { id: 'models', label: 'Models', index: '03' },
   { id: 'virtualmodels', label: 'Virtual Models', index: '04' },
+  { id: 'oauthaccounts', label: 'OAuth Accounts', index: '05' },
   { id: 'dashboard', label: 'Usage', index: '05' },
 ]
 

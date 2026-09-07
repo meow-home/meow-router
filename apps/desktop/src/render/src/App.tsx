@@ -4,6 +4,7 @@ import { UpdateModal } from './components/UpdateModal'
 import { ProvidersView } from './views/ProvidersView'
 import { ModelsView } from './views/ModelsView'
 import { VirtualModelsView } from './views/VirtualModelsView'
+import { OAuthAccountsView } from './views/OAuthAccountsView'
 import { GatewayView } from './views/GatewayView'
 import { DashboardView } from './views/DashboardView'
 import type { UpdateCheckResult, UpdateDownloadState, UpdateDownloadAction } from '@shared/ipc'
@@ -99,6 +100,7 @@ export default function App(): JSX.Element {
           {view === 'models' && <ModelsView />}
           {view === 'virtualmodels' && <VirtualModelsView />}
           {view === 'dashboard' && <DashboardView />}
+          {view === 'oauthaccounts' && <OAuthAccountsView />}
         </main>
       </div>
       {updateResult && (
