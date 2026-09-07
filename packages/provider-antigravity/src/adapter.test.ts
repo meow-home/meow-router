@@ -2,7 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { createAntigravityAdapter } from './adapter'
 import { defineAdapterContractTests, type AdapterContractHost } from '@meow-gateway/provider-core'
 import type { ProviderContext } from '@meow-gateway/provider-core'
-import type { Fetcher } from '@meow-gateway/oauth-core'
+import { OAuthTokenManager, type Fetcher, type OAuthTokenStore, type OAuthTokenBundle } from '@meow-gateway/oauth-core'
+import { ANTIGRAVITY_OAUTH_CLIENT } from './metadata'
+
+class MemoryTokenStore implements OAuthTokenStore {
+  private readonly m = new Map<string, OAuthTokenBundle>()
+  async get(ref: string): Promise<OAuthTokenBundle | null> { return this.m.get(ref) ?? null }
+  async set(ref: string, b: OAuthTokenBundle): Promise<void> { this.m.set(ref, b) }
+  async delete(ref: string): Promise<void> { this.m.delete(ref) }
+}
 
 const BASE_URL = 'https://mock.example.com'
 const AUTH = 'at-123'
@@ -76,5 +84,55 @@ describe('AntigravityAdapter', () => {
     const adapter = createAntigravityAdapter('antigravity', { fetcher })
     const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
     await expect(collect(adapter.chat(ctx(), req))).rejects.toMatchObject({ type: 'AUTH_ERROR' })
+  })
+
+  it('uses the tokenManager to obtain and refresh the access token (stale bundle path)', async () => {
+    // Regression: the adapter must go through the OAuthTokenManager so an
+    // expired access token is refreshed before talking to Antigravity. The
+    // stale bundle has an expiresAt in the past; without refresh the adapter
+    // would send the stale token and loadCodeAssist would 400 forever.
+    const store = new MemoryTokenStore()
+    const stale: OAuthTokenBundle = {
+      accessToken: 'stale-at',
+      refreshToken: 'rt-1',
+      tokenType: 'Bearer',
+      expiresAt: Date.now() - 10_000 // expired
+    }
+    await store.set('provider:p', stale)
+
+    const manager = new OAuthTokenManager({
+      config: ANTIGRAVITY_OAUTH_CLIENT,
+      store,
+      client: {
+        refreshAccessToken: async () => ({ accessToken: 'fresh-at', tokenType: 'Bearer', expiresInSec: 3600 })
+      } as never
+    })
+
+    let lastAuth: string | undefined
+    const fetcher: Fetcher = async (url, init) => {
+      const u = String(url)
+      if (u.includes('loadCodeAssist')) {
+        const auth = (init?.headers as Record<string, string> | undefined)?.['Authorization']
+        lastAuth = auth
+        if (auth === 'Bearer fresh-at') return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }), json: async () => ({ project: { id: 'p' } }) } as never
+        return { ok: false, status: 400, text: 'bad' } as never
+      }
+      if (u.includes('streamGenerateContent')) {
+        return {
+          ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n',
+          json: async () => ({}),
+          body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n')); c.close() } })
+        } as never
+      }
+      return { ok: false, status: 404, text: '' } as never
+    }
+
+    const adapter = createAntigravityAdapter('antigravity', { fetcher, tokenManager: manager })
+    const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
+    await collect(adapter.chat(ctx({ credentialRef: 'provider:p' }), req))
+
+    expect(lastAuth).toBe('Bearer fresh-at')
+    const stored = await store.get('provider:p')
+    expect(stored?.accessToken).toBe('fresh-at')
   })
 })

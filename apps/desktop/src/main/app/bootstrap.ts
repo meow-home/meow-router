@@ -27,7 +27,8 @@ import { createDeepSeekAdapter } from '@meow-gateway/provider-deepseek'
 import { createAntigravityAdapter } from '@meow-gateway/provider-antigravity'
 import { SecureOAuthTokenStore } from '../oauth/oauthTokenStore'
 import { OAuthLoginService } from '../oauth/oauthLoginService'
-import { clientForType } from '../oauth/antigravityConfig'
+import { OAUTH_CLIENT_FOR_TYPE, clientForType } from '../oauth/antigravityConfig'
+import { OAuthTokenManager } from '@meow-gateway/oauth-core'
 import type { OAuthAccountMeta, OAuthLoginStart } from '../../shared/ipc'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
 import {
@@ -92,7 +93,6 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   registry.register(createOpenAICompatibleAdapter('groq'))
   registry.register(createOpenAICompatibleAdapter('opencode'))
   registry.register(createDeepSeekAdapter('deepseek'))
-  registry.register(createAntigravityAdapter('antigravity'))
   registry.register(createOpenAICompatibleAdapter('openai-compatible'))
 
   const virtualModels = new VirtualModelService(virtualModelRepo, null, providerRepo)
@@ -105,6 +105,18 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     tokenStore: oauthTokenStore,
     clientForType
   })
+
+  // OAuth-backed adapters must be given an OAuthTokenManager so they refresh
+  // an expired access token before calling the provider. Without one the
+  // adapter falls back to the raw stored access token and every request 400s
+  // after the ~1h token lifetime (loadCodeAssist -> "Could not resolve
+  // Antigravity project"). The manager reads/writes the same `provider:<id>`
+  // secure-store ref that OAuthLoginService writes on login.
+  const oauthManager = new OAuthTokenManager({
+    config: OAUTH_CLIENT_FOR_TYPE['antigravity'],
+    store: oauthTokenStore
+  })
+  registry.register(createAntigravityAdapter('antigravity', { tokenManager: oauthManager }))
 
   // A key must exist before the gateway can ever be started, so the Gateway
   // view has something to show on a fresh install. A credential store that
