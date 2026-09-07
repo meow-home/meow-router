@@ -7,3 +7,4 @@ export {
   DEFAULT_UA_ARCH,
   type AntigravityMetadata
 } from './metadata'
+export { resolveProjectId, type ResolveProjectParams } from './project'
