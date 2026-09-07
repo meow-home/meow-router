@@ -28,6 +28,14 @@
 - Zhipu/GLM
 - Qwen
 
+## v0.2.1 — OAuth accounts (Antigravity)
+
+- OAuth-core package (authorization flow, callback server, token refresh)
+- Antigravity adapter (project-id resolution, SSE streaming)
+- desktop OAuth Accounts view + IPC
+- 1 provider = 1 Google account
+- dev-only OAuth client credentials (to be replaced before release)
+
 ## v0.4 — Routing
 
 - primary/fallback

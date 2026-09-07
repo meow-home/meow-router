@@ -103,3 +103,33 @@ providers/<provider-id>/
 ```
 
 Then register the adapter in the provider registry.
+
+## OAuth-based providers (Antigravity)
+
+Some providers authenticate with a Google account via OAuth instead of an API
+key. Antigravity is the first such provider.
+
+- The adapter declares `authType: 'oauth'`.
+- **1 provider = 1 account**: a signed-in Google account creates a single
+  `antigravity` provider row, and its display name is the account's email.
+- The token bundle (access/refresh token, expiry, resolved project id) is stored
+  through the OAuth token store, which is backed by the same OS secure store
+  used for API keys. Neither raw tokens nor the refresh token ever reach the
+  renderer.
+- The Antigravity **project id is resolved lazily** on first use via
+  `v1internal:loadCodeAssist` and cached in the token bundle. A brand-new
+  account that has not created a project yet will surface a clear error instead
+  of auto-provisioning (see `packages/provider-antigravity/src/project.ts`).
+- Access tokens are auto-refreshed near expiry by the OAuth token manager before
+  a request is sent.
+- The gateway itself is provider-neutral and treats an OAuth provider like any
+  other: it reads the credential at `provider:<id>` and dispatches through the
+  adapter, so `gateway/server.ts` requires no special-casing.
+
+### Credential notes (DANGER)
+
+The Antigravity OAuth `client_id`/`client_secret` are currently hard-coded as
+**dev-only** values in `metadata.ts`, mirroring the cockpit-tools reference.
+This intentionally deviates from the "no hard-coded provider secrets" rule for
+the POC and MUST be replaced with user-supplied credentials or a dedicated
+secure backend before shipping. See the OAuth design spec's security section.

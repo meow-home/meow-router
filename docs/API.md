@@ -208,6 +208,27 @@ and are re-exported as `@shared/ipc`. The preload exposes a single
 `window.meowGateway` object matching the `WindowApi` interface. All IPC payloads are schema-validated;
 only non-sensitive data crosses this boundary (credentials never do).
 
+### OAuth-authenticated providers (Antigravity)
+
+The Antigravity provider (and any future OAuth-backed provider) does **not**
+take an API key. It is signed in through the desktop **OAuth Accounts** view,
+which runs a local loopback OAuth flow:
+
+- `oauthStartLogin(type)` opens the system browser against the provider's
+  authorization URL and starts a local callback server on `127.0.0.1`.
+- `oauthCompleteLogin(type)` waits for the browser redirect, exchanges the
+  authorization code, fetches the account's userinfo, creates a provider row
+  (display name = the account's email), and persists the token bundle to the OS
+  secure store at the gateway credential ref `provider:<id>`.
+- `oauthListAccounts(type)` returns non-sensitive metadata only (provider id,
+  email, display name, expiry, validity) — never tokens.
+- `oauthLogout(providerId)` revokes and removes the account.
+
+From the gateway's perspective an OAuth provider behaves like any other: the
+gateway reads `provider:<id>` and dispatches through the Antigravity adapter,
+which auto-refreshes the access token near expiry and resolves the Antigravity
+project id lazily on first use.
+
 ### Channels
 
 - `model.create`
