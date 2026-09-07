@@ -41,6 +41,10 @@ export interface WindowApi {
   usageDashboardTotals(): Promise<DashboardTotals>
   usageListRecent(limit: number): Promise<RequestUsageRow[]>
   usageListPage(page: number, pageSize: number): Promise<UsagePage>
+  oauthStartLogin(type: string): Promise<OAuthLoginStart>
+  oauthCompleteLogin(type: string): Promise<OAuthAccountMeta>
+  oauthListAccounts(type: string): Promise<OAuthAccountMeta[]>
+  oauthLogout(providerId: string): Promise<void>
   ping(): Promise<PingResult>
   listVirtualModels(): Promise<VirtualModelRow[]>
   getVirtualModel(id: string): Promise<VirtualModelRow | null>
@@ -89,6 +93,13 @@ export const IPC_CHANNELS = {
     listRecent: 'usage:list-recent',
     listPage: 'usage:list-page'
   },
+
+  oauth: {
+    startLogin: 'oauth:startLogin',
+    completeLogin: 'oauth:completeLogin',
+    listAccounts: 'oauth:listAccounts',
+    logout: 'oauth:logout'
+  },
   virtualModel: {
     list: 'virtual-model:list',
     get: 'virtual-model:get',
@@ -124,6 +135,19 @@ export interface NewProviderInput {
 }
 
 export type ProviderWithCredential = ProviderRow & { hasCredential: boolean }
+
+export interface OAuthLoginStart {
+  pending: boolean
+  redirectUri: string
+}
+
+export interface OAuthAccountMeta {
+  providerId: string
+  email: string
+  displayName: string
+  expiresAt: number
+  valid: boolean
+}
 
 export interface ProviderTypeDescriptor {
   id: string

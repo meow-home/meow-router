@@ -24,6 +24,11 @@ import { CredentialError } from '../credentials/types'
 import { ProviderRegistry, ProviderError, type CredentialCheckResult } from '@meow-gateway/provider-core'
 import { createOpenAICompatibleAdapter } from '@meow-gateway/provider-openai'
 import { createDeepSeekAdapter } from '@meow-gateway/provider-deepseek'
+import { createAntigravityAdapter } from '@meow-gateway/provider-antigravity'
+import { SecureOAuthTokenStore } from '../oauth/oauthTokenStore'
+import { OAuthLoginService } from '../oauth/oauthLoginService'
+import { clientForType } from '../oauth/antigravityConfig'
+import type { OAuthAccountMeta, OAuthLoginStart } from '../../shared/ipc'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
 import {
   GATEWAY_KEY_REF,
@@ -87,11 +92,19 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   registry.register(createOpenAICompatibleAdapter('groq'))
   registry.register(createOpenAICompatibleAdapter('opencode'))
   registry.register(createDeepSeekAdapter('deepseek'))
+  registry.register(createAntigravityAdapter('antigravity'))
   registry.register(createOpenAICompatibleAdapter('openai-compatible'))
 
   const virtualModels = new VirtualModelService(virtualModelRepo, null, providerRepo)
   const usage = new UsageService(usageRepo, modelRepo)
   const providerService = new ProviderService(providerRepo, accountRepo, modelRepo, credentials, registry)
+
+  const oauthTokenStore = new SecureOAuthTokenStore(credentials)
+  const oauthLogin = new OAuthLoginService({
+    providerService,
+    tokenStore: oauthTokenStore,
+    clientForType
+  })
 
   // A key must exist before the gateway can ever be started, so the Gateway
   // view has something to show on a fresh install. A credential store that
@@ -139,7 +152,8 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     configRepo,
     gateway,
     credentials,
-    authPolicy
+    authPolicy,
+    oauthLogin
   })
 
   // Guard against Electron not providing safeStorage in some dev contexts.
@@ -174,10 +188,11 @@ interface IpcHandlers {
   gateway: GatewayServer
   credentials: CredentialService
   authPolicy: AuthPolicyCache
+  oauthLogin: OAuthLoginService
 }
 
 function registerIpcHandlers(handlers: IpcHandlers): void {
-  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway, credentials, authPolicy } = handlers
+  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway, credentials, authPolicy, oauthLogin } = handlers
 
   // --- Virtual-model CRUD (unchanged) --------------------------------------
   ipcMain.handle(IPC_CHANNELS.virtualModel.list, async (): Promise<IpcResult<VirtualModelRow[]>> => {
@@ -348,6 +363,27 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
       authPolicy.invalidate()
       return { masked: maskGatewayKey(key), present: true }
     })
+  })
+
+  // --- OAuth ----------------------------------------------------------------
+  ipcMain.handle(IPC_CHANNELS.oauth.startLogin, async (_e, type: string): Promise<IpcResult<OAuthLoginStart>> => {
+    if (!isNonEmptyString(type)) return badRequest('`type` must be a non-empty string.')
+    return wrap(() => oauthLogin.startLogin(type))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.oauth.completeLogin, async (_e, type: string): Promise<IpcResult<OAuthAccountMeta>> => {
+    if (!isNonEmptyString(type)) return badRequest('`type` must be a non-empty string.')
+    return wrap(() => oauthLogin.completeLogin(type))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.oauth.listAccounts, async (_e, type: string): Promise<IpcResult<OAuthAccountMeta[]>> => {
+    if (!isNonEmptyString(type)) return badRequest('`type` must be a non-empty string.')
+    return wrap(() => oauthLogin.listAccounts(type))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.oauth.logout, async (_e, providerId: string): Promise<IpcResult<void>> => {
+    if (!isNonEmptyString(providerId)) return badRequest('`providerId` must be a non-empty string.')
+    return wrap(() => oauthLogin.logoutAccount(providerId))
   })
 
   // --- Usage ----------------------------------------------------------------

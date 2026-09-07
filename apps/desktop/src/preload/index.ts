@@ -15,7 +15,9 @@ import {
   type UsagePage,
   type UpdateCheckResult,
   type UpdateDownloadState,
-  type UpdateDownloadAction
+  type UpdateDownloadAction,
+  type OAuthAccountMeta,
+  type OAuthLoginStart
 } from '../shared/ipc'
 import type {
   VirtualModelRow,
@@ -66,6 +68,10 @@ const api: WindowApi = {
   usageDashboardTotals: () => invoke<DashboardTotals>(IPC_CHANNELS.usage.dashboardTotals),
   usageListRecent: (limit) => invoke<RequestUsageRow[]>(IPC_CHANNELS.usage.listRecent, limit),
   usageListPage: (page, pageSize) => invoke<UsagePage>(IPC_CHANNELS.usage.listPage, page, pageSize),
+  oauthStartLogin: (type) => invoke<OAuthLoginStart>(IPC_CHANNELS.oauth.startLogin, type),
+  oauthCompleteLogin: (type) => invoke<OAuthAccountMeta>(IPC_CHANNELS.oauth.completeLogin, type),
+  oauthListAccounts: (type) => invoke<OAuthAccountMeta[]>(IPC_CHANNELS.oauth.listAccounts, type),
+  oauthLogout: (providerId) => invoke<void>(IPC_CHANNELS.oauth.logout, providerId),
   listVirtualModels: () => invoke<VirtualModelRow[]>(IPC_CHANNELS.virtualModel.list),
   getVirtualModel: (id) => invoke<VirtualModelRow | null>(IPC_CHANNELS.virtualModel.get, id),
   createVirtualModel: (input: NewVirtualModelInput) => invoke<VirtualModelRow>(IPC_CHANNELS.virtualModel.create, input),

@@ -1,7 +1,6 @@
 import { shell } from 'electron'
 import { OAuthTokenClient, type OAuthClientConfig, type OAuthTokenBundle, type OAuthTokenStore, prepareAuth, type PreparedAuth } from '@meow-gateway/oauth-core'
 import type { ProviderService } from '../provider/providerService'
-import type { CredentialService } from '../credentials/credentialService'
 
 export interface OAuthAccountMeta {
   providerId: string
@@ -18,7 +17,6 @@ export interface OAuthLoginStart {
 
 export interface OAuthLoginServiceDeps {
   providerService: ProviderService
-  credentials: CredentialService
   tokenStore: OAuthTokenStore
   clientForType: (type: string) => OAuthClientConfig
   /** Optional so tests can inject a fresh OAuthTokenClient. */
@@ -31,7 +29,6 @@ function credentialRefFor(providerId: string): string {
 
 export class OAuthLoginService {
   private readonly providerService: ProviderService
-  private readonly credentials: CredentialService
   private readonly tokenStore: OAuthTokenStore
   private readonly clientForType: (type: string) => OAuthClientConfig
   private readonly tokenClientForType?: (type: string) => OAuthTokenClient
@@ -39,7 +36,6 @@ export class OAuthLoginService {
 
   constructor(deps: OAuthLoginServiceDeps) {
     this.providerService = deps.providerService
-    this.credentials = deps.credentials
     this.tokenStore = deps.tokenStore
     this.clientForType = deps.clientForType
     this.tokenClientForType = deps.tokenClientForType
@@ -116,6 +112,10 @@ export class OAuthLoginService {
     // Best-effort revoke of the account: delete the provider (cascades its
     // account/model rows) and clear the secure-store bundle.
     await this.tokenStore.delete(credentialRefFor(providerId)).catch(() => {})
-    await this.providerService.delete(providerId).catch(() => {})
+    try {
+      await this.providerService.delete(providerId)
+    } catch {
+      // best-effort
+    }
   }
 }

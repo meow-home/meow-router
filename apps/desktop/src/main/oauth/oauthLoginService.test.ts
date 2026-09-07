@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { OAuthLoginService } from './oauthLoginService'
 import type { ProviderService } from '../provider/providerService'
-import type { CredentialService } from '../credentials/credentialService'
 import type { OAuthTokenStore, OAuthTokenBundle } from '@meow-gateway/oauth-core'
 import type { ProviderRow } from '../database/types'
 
@@ -31,6 +30,7 @@ function makeServer() {
   return {
     url: 'http://127.0.0.1:9/oauth-callback',
     redirectUri: 'http://127.0.0.1:9/oauth-callback',
+    state: 'st',
     waitForCallback: async () => ({ code: 'CODE' })
   }
 }
@@ -45,7 +45,6 @@ describe('OAuthLoginService', () => {
     }
     const svc = new OAuthLoginService({
       providerService,
-      credentials: {} as unknown as CredentialService,
       tokenStore: memStore(),
       clientForType: () => OAUTH_CLIENT,
       tokenClientForType: () => client as never
@@ -69,7 +68,6 @@ describe('OAuthLoginService', () => {
       delete: async () => true,
       listWithCredential: async () => []
     } as unknown as ProviderService
-    const credentials = { setCredential: async () => {}, getCredential: async () => null, deleteCredential: async () => {}, hasCredential: async () => false } as unknown as CredentialService
     const client = {
       exchangeCode: async () => ({ accessToken: 'AT', refreshToken: 'RT', tokenType: 'Bearer', expiresInSec: 3600 }),
       refreshAccessToken: async () => { throw new Error('n/a') },
@@ -77,7 +75,6 @@ describe('OAuthLoginService', () => {
     }
     const svc = new OAuthLoginService({
       providerService,
-      credentials,
       tokenStore: store,
       clientForType: () => OAUTH_CLIENT,
       tokenClientForType: () => client as never
@@ -102,7 +99,6 @@ describe('OAuthLoginService', () => {
     } as unknown as ProviderService
     const svc = new OAuthLoginService({
       providerService,
-      credentials: {} as unknown as CredentialService,
       tokenStore: store,
       clientForType: () => OAUTH_CLIENT
     })
