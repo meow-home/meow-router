@@ -16,6 +16,12 @@ importers:
       '@fontsource/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@meow-gateway/oauth-core':
+        specifier: workspace:^
+        version: link:../../packages/oauth-core
+      '@meow-gateway/provider-antigravity':
+        specifier: workspace:^
+        version: link:../../packages/provider-antigravity
       '@meow-gateway/provider-core':
         specifier: workspace:^
         version: link:../../packages/provider-core
