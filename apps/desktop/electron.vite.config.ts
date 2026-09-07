@@ -10,7 +10,7 @@ export default defineConfig({
     // stays external.
     plugins: [
       externalizeDepsPlugin({
-        exclude: ['@meow-gateway/provider-core', '@meow-gateway/provider-openai', '@meow-gateway/provider-deepseek']
+        exclude: ['@meow-gateway/provider-core', '@meow-gateway/provider-openai', '@meow-gateway/provider-deepseek', '@meow-gateway/provider-antigravity', '@meow-gateway/oauth-core']
       })
     ]
   },
