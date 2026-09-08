@@ -147,8 +147,8 @@ export const antigravityMetadata = {
 ### project.ts — resolve project_id (DYNAMIC theo account)
 Antigravity cần `project` trong body, là giá trị **động theo account**, không có lúc login:
 1. Đọc `bundle.projectId` — nếu có, dùng ngay.
-2. Nếu chưa: POST `{base}/v1internal:loadCodeAssist` (Bearer, header `User-Agent: antigravity/<ver> <os>/<arch> google-api-nodejs-client/<ver>`, `x-goog-api-client: gl-node/<ver>`) → nếu response có `project.id` → cache → trả về.
-3. Nếu tài khoản mới chưa có project: gọi `v1internal:onboardUser` + poll operation → lấy `project.id` → cache.
+2. Nếu chưa: POST `{base}/v1internal:loadCodeAssist` (Bearer, header `User-Agent: antigravity/<ver> <os>/<arch> google-api-nodejs-client/<ver>`, `x-goog-api-client: gl-node/<ver>`) với body `{ metadata: ClientMetadata, mode }` — `metadata` là `{ ideName: 'GEMINI_CLI', pluginType: 'GEMINI', ideVersion, platform }` (đúng contract của Cloud Code Assist API, giống `gemini-cli` của Google; **không** dùng `{ appVersion }` vì server trả 400). Nếu response có `cloudaicompanionProject` (hoặc fallback `project.id`) → cache → trả về.
+3. Nếu tài khoản mới chưa có project: gọi `v1internal:onboardUser` + poll operation → lấy project id → cache.
 
 Header bắt buộc: `User-Agent`, `x-goog-api-client` (port constants trong metadata).
 

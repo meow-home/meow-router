@@ -120,6 +120,13 @@ key. Antigravity is the first such provider.
   `v1internal:loadCodeAssist` and cached in the token bundle. A brand-new
   account that has not created a project yet will surface a clear error instead
   of auto-provisioning (see `packages/provider-antigravity/src/project.ts`).
+- The `loadCodeAssist` request uses the real Cloud Code Assist API contract:
+  the POST body's `metadata` is a valid `ClientMetadata` (`ideName: 'GEMINI_CLI'`,
+  `pluginType: 'GEMINI'`, `ideVersion`, `platform`) — matching google's own
+  `gemini-cli` `CodeAssistServer`, and the project id is read from the
+  response's `cloudaicompanionProject` field. Sending the wrong metadata shape
+  (e.g. `{ appVersion }`) makes the server reject every request with
+  `400 INVALID_ARGUMENT`, surfacing as "Could not resolve Antigravity project".
 - Access tokens are auto-refreshed near expiry by the OAuth token manager before
   a request is sent.
 - The gateway itself is provider-neutral and treats an OAuth provider like any

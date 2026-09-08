@@ -164,6 +164,8 @@ data: [DONE]
 
 ```
 
+Reasoning models (e.g. Antigravity's gemini-2.5-flash) stream their chain-of-thought as OpenAI-compatible `delta.reasoning_content` chunks before the final `content` delta. Clients that understand reasoning (the AI SDK reads `delta.reasoning_content` or `delta.reasoning`) can surface it; others simply ignore it.
+
 ## Virtual model resolution
 
 Example configuration:

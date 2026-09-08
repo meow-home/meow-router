@@ -19,9 +19,17 @@ export function chunkToSseData(chunk: NormalizedChatChunk): string {
   switch (chunk.kind) {
     case 'content_delta':
       return JSON.stringify({
-        id: baseId,
-        object: 'chat.completion.chunk',
-        choices: [{ index: 0, delta: { content: chunk.delta }, finish_reason: null }]
+            id: baseId,
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: { content: chunk.delta }, finish_reason: null }]
+      })
+    case 'reasoning_delta':
+      // OpenAI-compatible reasoning: the AI SDK reads delta.reasoning_content
+      // (or delta.reasoning) and surfaces it as reasoning-delta parts.
+      return JSON.stringify({
+            id: baseId,
+            object: 'chat.completion.chunk',
+            choices: [{ index: 0, delta: { reasoning_content: chunk.delta }, finish_reason: null }]
       })
     case 'tool_call_delta':
       return JSON.stringify({

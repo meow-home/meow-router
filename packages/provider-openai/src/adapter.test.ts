@@ -237,7 +237,7 @@ describe('OpenAICompatibleAdapter', () => {
       body
     })
     const adapter = createOpenAICompatibleAdapter('openai', fetcher)
-    const seen: Array<'content_delta' | 'tool_call_delta' | 'finish'> = []
+    const seen: Array<'content_delta' | 'reasoning_delta' | 'tool_call_delta' | 'finish'> = []
     try {
       for await (const c of adapter.chat(ctx(), {
         model: 'gpt-4o',

@@ -57,7 +57,7 @@ export interface NormalizedMessage {
 
 export interface NormalizedChatChunk {
   id: string
-  kind: 'content_delta' | 'tool_call_delta' | 'finish'
+  kind: 'content_delta' | 'reasoning_delta' | 'tool_call_delta' | 'finish'
   delta?: string
   toolCall?: ToolCallDelta
   finishReason?: string

@@ -14,6 +14,90 @@ function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path
 }
 
+// Maps Gemini/Antigravity finish reasons to the OpenAI-compatible values the
+// gateway exposes. `STOP` -> `stop`, `MAX_TOKENS` -> `length`, tool calls ->
+// `tool_calls`, anything else passes through.
+function mapFinishReason(reason: string): string {
+  if (reason === 'STOP') return 'stop'
+  if (reason === 'MAX_TOKENS') return 'length'
+  if (reason === 'SAFETY') return 'content_filter'
+  return reason.toLowerCase()
+}
+
+interface AntigravityPart {
+  text?: string
+  functionCall?: { name: string; args: Record<string, unknown> }
+  functionResponse?: { name: string; response: Record<string, unknown> }
+}
+
+interface AntigravityContent {
+  role: 'user' | 'model'
+  parts: AntigravityPart[]
+}
+
+// Converts provider-neutral (OpenAI-style) messages into the Gemini/Antigravity
+// `contents` shape. The Cloud Code Assist API only accepts `user` and `model`
+// roles in contents: `system` goes into `systemInstruction`, `assistant` maps to
+// `model`, and `tool` results become a `user` message carrying a
+// `functionResponse`. Sending OpenAI roles verbatim makes the server reject the
+// request with 400 INVALID_ARGUMENT.
+function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
+  contents: AntigravityContent[]
+  systemInstruction?: { parts: AntigravityPart[] }
+} {
+  const contents: AntigravityContent[] = []
+  const systemParts: AntigravityPart[] = []
+  // Maps an OpenAI tool_call_id to the function name the model requested. The
+  // Antigravity/Gemini `functionResponse.name` must equal the `functionCall.name`
+  // the model emitted, NOT the tool call id. OpenAI tool messages only carry the
+  // tool_call_id, so we recover the function name from the preceding assistant
+  // message's tool_calls.
+  const toolCallIdToName = new Map<string, string>()
+  for (const m of messages) {
+    switch (m.role) {
+      case 'system':
+        if (m.content) systemParts.push({ text: String(m.content) })
+        break
+      case 'user':
+        contents.push({ role: 'user', parts: [{ text: String(m.content ?? '') }] })
+        break
+      case 'assistant': {
+        const parts: AntigravityPart[] = []
+        if (m.content) parts.push({ text: String(m.content) })
+        if (Array.isArray(m.toolCalls)) {
+          for (const tc of m.toolCalls) {
+            const t = tc as { id?: string; function?: { name?: string; arguments?: unknown } }
+            const fn = t.function
+            const name = fn?.name
+            if (!name) continue
+            if (t.id) toolCallIdToName.set(t.id, name)
+            let args: Record<string, unknown> = {}
+            if (typeof fn.arguments === 'string') {
+              try { args = JSON.parse(fn.arguments) } catch { args = {} }
+            } else if (fn.arguments && typeof fn.arguments === 'object') {
+              args = fn.arguments as Record<string, unknown>
+            }
+            parts.push({ functionCall: { name, args } })
+          }
+        }
+        if (parts.length > 0) contents.push({ role: 'model', parts })
+        break
+      }
+      case 'tool': {
+        // Use the function name recovered from the assistant tool_calls; fall
+        // back to the tool_call_id only if we never saw the call.
+        const name = (m.toolCallId && toolCallIdToName.get(m.toolCallId)) || m.toolCallId || 'unknown'
+        contents.push({
+          role: 'user',
+          parts: [{ functionResponse: { name, response: { result: String(m.content ?? '') } } }]
+        })
+        break
+      }
+    }
+  }
+  return { contents, systemInstruction: systemParts.length > 0 ? { parts: systemParts } : undefined }
+}
+
 function parseBundle(raw: string | undefined): OAuthTokenBundle | undefined {
   if (!raw) return undefined
   try {
@@ -40,6 +124,10 @@ export interface AntigravityAdapterOptions {
   tokenManager?: OAuthTokenManager
   fetcher?: Fetcher
   fallbackModels?: string[]
+  // Minimal structured logger (defaults to console). Used for debugging the
+  // Antigravity request lifecycle: token resolution, project resolution, base
+  // URL fallback and SSE parsing. Never logs credentials, tokens or bodies.
+  logger?: Pick<Console, 'log' | 'warn' | 'error'>
 }
 
 interface ResolvedAuth {
@@ -53,12 +141,18 @@ export class AntigravityAdapter implements ProviderAdapter {
   private readonly fetcher: Fetcher
   private readonly tokenManager?: OAuthTokenManager
   private readonly fallbackModels: string[]
+  private readonly logger: Pick<Console, 'log' | 'warn' | 'error'>
 
   constructor(id: string = antigravityMetadata.id, opts: AntigravityAdapterOptions = {}) {
     this.id = id
     this.fetcher = opts.fetcher ?? defaultFetcher()
     this.tokenManager = opts.tokenManager
     this.fallbackModels = opts.fallbackModels ?? ['gemini-2.5-pro', 'gemini-2.5-flash']
+    this.logger = opts.logger ?? console
+  }
+
+  private log(msg: string, extra?: Record<string, unknown>): void {
+    this.logger.log(`[antigravity] ${msg}`, extra ?? {})
   }
 
   private resolveBaseUrl(ctx: ProviderContext): string {
@@ -75,6 +169,8 @@ export class AntigravityAdapter implements ProviderAdapter {
     if (this.tokenManager && ctx.credentialRef) {
       const accessToken = await this.tokenManager.getAccessToken(ctx.credentialRef)
       const current = await this.tokenManager.getBundle(ctx.credentialRef)
+      const expiresInSec = current?.expiresAt ? Math.round((current.expiresAt - Date.now()) / 1000) : undefined
+      this.log('auth resolved', { ref: ctx.credentialRef, expiresInSec, hasRefreshToken: Boolean(current?.refreshToken) })
       return { accessToken, bundle: current ?? bundle, ref: ctx.credentialRef }
     }
     if (bundle?.accessToken) return { accessToken: bundle.accessToken, bundle }
@@ -141,7 +237,12 @@ export class AntigravityAdapter implements ProviderAdapter {
     const { accessToken, bundle } = await this.resolveAuth(ctx)
     const projectId = await this.resolveProject(ctx, accessToken, bundle)
     const id = 'req_' + randomUUID()
-    const messages = request.messages.map((m) => ({ role: m.role, parts: [{ text: String(m.content) }] }))
+    const { contents, systemInstruction } = toAntigravityContents(request.messages)
+    // Diagnostic: log the request contents structure (roles + part keys only,
+    // never content) to debug the tool-call round-trip 400. Remove once stable.
+    this.log('request contents shape', {
+      contents: contents.map((c) => ({ role: c.role, partKeys: c.parts.map((p) => Object.keys(p)) }))
+    })
     const body = {
       project: projectId,
       requestId: id,
@@ -149,9 +250,9 @@ export class AntigravityAdapter implements ProviderAdapter {
       userAgent: 'antigravity',
       requestType: 'agent',
       request: {
-        contents: messages,
+        contents,
         session_id: 'sess_' + randomUUID().slice(0, 8),
-        systemInstruction: { parts: [{ text: ANTIGRAVITY_SYSTEM_PROMPT }] },
+        systemInstruction: systemInstruction ?? { parts: [{ text: ANTIGRAVITY_SYSTEM_PROMPT }] },
         generationConfig: {
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
           ...(request.maxTokens && request.maxTokens > 0 ? { maxOutputTokens: request.maxTokens } : {})
@@ -159,30 +260,52 @@ export class AntigravityAdapter implements ProviderAdapter {
       }
     }
 
-    let res
-    try {
-      res = await this.fetcher(joinUrl(this.resolveBaseUrl(ctx), STREAM_PATH), {
-        method: 'POST',
-        headers: await this.headers(ctx, accessToken),
-        body: JSON.stringify(body),
-        signal: ctx.signal
-      })
-    } catch {
-      if (ctx.signal.aborted) throw new ProviderError({ type: 'TIMEOUT', message: 'Request aborted.', retryable: false })
-      throw new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Request to provider failed.', retryable: true })
-    }
+    // Try each base URL in order. The primary endpoint can intermittently 5xx;
+    // falling back to the next base URL avoids surfacing a spurious
+    // PROVIDER_UNAVAILABLE when a sibling endpoint is healthy.
+    let lastErr: ProviderError | undefined
+    for (const base of this.baseUrlsToTry(ctx)) {
+      let res
+      try {
+        this.log('stream request', { base, model: request.model, projectId })
+        res = await this.fetcher(joinUrl(base, STREAM_PATH), {
+          method: 'POST',
+          headers: await this.headers(ctx, accessToken),
+          body: JSON.stringify(body),
+          signal: ctx.signal
+        })
+      } catch {
+        if (ctx.signal.aborted) throw new ProviderError({ type: 'TIMEOUT', message: 'Request aborted.', retryable: false })
+        this.logger.warn(`[antigravity] network error on ${base}, trying next base url`)
+        lastErr = new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Request to provider failed.', retryable: true })
+        continue
+      }
+      if (!res.ok) {
+        lastErr = this.errorFromStatus(res.status)
+        // Diagnostic: read the provider error body (may contain the exact
+        // INVALID_ARGUMENT reason). Never logs credentials/tokens.
+        let errBody = ''
+        try { errBody = (await res.text()).slice(0, 2000) } catch { /* ignore */ }
+        this.logger.warn(`[antigravity] non-ok status ${res.status} on ${base} (retryable=${lastErr.retryable}) body=${errBody}`)
+        // Only fall back on retryable (5xx) failures; a 4xx is a client bug and
+        // retrying another endpoint won't help.
+        if (!lastErr.retryable) throw lastErr
+        continue
+      }
 
-    if (!res.ok) throw this.errorFromStatus(res.status)
+      const shouldStream = request.stream !== false
+      const chunks: NormalizedChatChunk[] = []
+      for await (const chunk of this.parseSse(res, ctx.signal)) chunks.push(chunk)
+      this.log('stream complete', { base, chunkCount: chunks.length, finishReason: chunks.find((c) => c.kind === 'finish')?.finishReason })
 
-    const shouldStream = request.stream !== false
-    const chunks: NormalizedChatChunk[] = []
-    for await (const chunk of this.parseSse(res, ctx.signal)) chunks.push(chunk)
-
-    if (!shouldStream) {
-      yield* this.asNonStreamingChunks(chunks)
+      if (!shouldStream) {
+        yield* this.asNonStreamingChunks(chunks)
+        return
+      }
+      yield* chunks
       return
     }
-    yield* chunks
+    throw lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Request to provider failed.', retryable: true })
   }
 
   private async resolveProject(ctx: ProviderContext, accessToken: string, bundle: OAuthTokenBundle | undefined): Promise<string> {
@@ -191,13 +314,16 @@ export class AntigravityAdapter implements ProviderAdapter {
         accessToken,
         cachedProjectId: bundle?.projectId,
         baseUrls: this.baseUrlsToTry(ctx),
-        fetcher: this.fetcher
+        fetcher: this.fetcher,
+        logger: this.logger
       })
+      this.log('project resolved', { projectId, cached: Boolean(bundle?.projectId) })
       if (this.tokenManager && ctx.credentialRef && !bundle?.projectId) {
         await this.tokenManager.setProjectId(ctx.credentialRef, projectId).catch(() => {})
       }
       return projectId
     } catch (err) {
+      this.logger.error(`[antigravity] project resolution failed: ${err instanceof Error ? err.message : String(err)}`)
       throw new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: `Could not resolve Antigravity project: ${err instanceof Error ? err.message : String(err)}`, retryable: false })
     }
   }
@@ -216,17 +342,22 @@ export class AntigravityAdapter implements ProviderAdapter {
       const decoder = new TextDecoder()
       let buffer = ''
       let done = false
+      let blockCount = 0
       while (!done) {
         const { value, done: stop } = await reader.read()
         done = stop
-        buffer += decoder.decode(value, { stream: !done })
+        // Normalize CRLF to LF so blocks split reliably on '\n\n' regardless of
+        // whether the provider emits '\r\n\r\n' or '\n\n' as the SSE separator.
+        buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
         let idx: number
         while ((idx = buffer.indexOf('\n\n')) >= 0) {
           const block = buffer.slice(0, idx)
           buffer = buffer.slice(idx + 2)
+          blockCount++
           for (const c of this.parseEventLines(block)) yield c
         }
       }
+      this.log('sse stream ended', { blockCount, trailingBufferLen: buffer.length })
       if (buffer.trim()) { for (const c of this.parseEventLines(buffer)) yield c }
     } catch {
       if (signal?.aborted) throw new ProviderError({ type: 'TIMEOUT', message: 'Request aborted.', retryable: false })
@@ -240,8 +371,11 @@ export class AntigravityAdapter implements ProviderAdapter {
 
   private *parseEventLines(block: string): Iterable<NormalizedChatChunk> {
     let accumulated = ''
+    let reasoning = ''
     let finishReason: string | undefined
-    const usage = (obj: unknown): NormalizedChatChunk['usage'] => {
+    let usage: NormalizedChatChunk['usage'] | undefined
+    const toolCalls: NormalizedChatChunk['toolCall'][] = []
+    const extractUsage = (obj: unknown): NormalizedChatChunk['usage'] => {
       const o = obj as Record<string, unknown>
       const um = o['usageMetadata'] as Record<string, unknown> | undefined
       return {
@@ -257,32 +391,83 @@ export class AntigravityAdapter implements ProviderAdapter {
       let parsed: Record<string, unknown>
       try { parsed = JSON.parse(payload) } catch { continue }
       const response = (parsed['response'] ?? parsed) as Record<string, unknown>
+      // Diagnostic: log the response structure (keys only, never content) so we
+      // can see the real shape the provider returns. Remove once stable.
+      this.log('sse block shape', { topKeys: Object.keys(parsed), responseKeys: Object.keys(response) })
       const candidates = (response['candidates'] as unknown[] | undefined) ?? [response]
       for (const c of candidates) {
         const cand = c as Record<string, unknown>
         if (typeof cand['finishReason'] === 'string') finishReason = cand['finishReason']
         const content = cand['content'] as Record<string, unknown> | undefined
         const parts = (content?.['parts'] as unknown[] | undefined) ?? []
+        // Diagnostic: log candidate/part structure (keys + part types only,
+        // never text content) to see the real shape. Remove once stable.
+        this.log('sse candidate shape', {
+          candKeys: Object.keys(cand),
+          contentKeys: content ? Object.keys(content) : undefined,
+          partCount: parts.length,
+          partKeys: parts.map((p) => Object.keys(p as Record<string, unknown>))
+        })
         for (const p of parts) {
           const part = p as Record<string, unknown>
-          if (part['thought'] === true) continue
+          // Reasoning parts (thought: true) carry the model's chain-of-thought.
+          // Surface them as reasoning_delta so the client can show them instead
+          // of dropping them (which left gemini-2.5-flash with an empty stream).
+          if (part['thought'] === true) {
+            if (typeof part['text'] === 'string' && part['text']) reasoning += part['text']
+            continue
+          }
           if (typeof part['text'] === 'string' && part['text']) accumulated += part['text']
+          // The model can respond with a function call (tool call) instead of
+          // text. Emit it as a tool_call_delta so the client sees the call
+          // rather than an empty completion. `args` is an object; serialize it.
+          const fc = part['functionCall'] as { name?: string; args?: Record<string, unknown> } | undefined
+          if (fc && typeof fc.name === 'string') {
+            toolCalls.push({
+              index: toolCalls.length,
+              id: `call_${toolCalls.length}`,
+              name: fc.name,
+              arguments: fc.args ? JSON.stringify(fc.args) : '{}'
+            })
+          }
         }
       }
-      const finish = finishReason ?? (response['usageMetadata'] ? 'stop' : undefined)
+      if (response['usageMetadata']) usage = extractUsage(response)
+      if (reasoning) {
+        this.log('sse reasoning_delta', { len: reasoning.length })
+        yield { id: 'x', kind: 'reasoning_delta', delta: reasoning }
+        reasoning = ''
+      }
       if (accumulated) {
+        this.log('sse content_delta', { len: accumulated.length })
         yield { id: 'x', kind: 'content_delta', delta: accumulated }
         accumulated = ''
       }
-      if (finish || response['usageMetadata']) {
-        yield { id: 'x', kind: 'finish', finishReason: finish ?? 'stop', ...(response['usageMetadata'] ? { usage: usage(response) } : {}) }
+      for (const tc of toolCalls) {
+        if (!tc) continue
+        this.log('sse tool_call_delta', { name: tc.name })
+        yield { id: 'x', kind: 'tool_call_delta', toolCall: tc }
+      }
+      toolCalls.length = 0
+      // Only emit a terminal `finish` when the provider reports an actual
+      // finishReason (STOP/MAX_TOKENS/...). Intermediate SSE blocks carry
+      // usageMetadata but no finishReason; emitting `finish` for each of them
+      // makes the gateway stop after the first token.
+      if (finishReason) {
+        this.log('sse finish', { finishReason, usage })
+        yield { id: 'x', kind: 'finish', finishReason: mapFinishReason(finishReason), ...(usage ? { usage } : {}) }
+        finishReason = undefined
+        usage = undefined
       }
     }
+    if (reasoning) yield { id: 'x', kind: 'reasoning_delta', delta: reasoning }
     if (accumulated) yield { id: 'x', kind: 'content_delta', delta: accumulated }
   }
 
   private *asNonStreamingChunks(chunks: NormalizedChatChunk[]): Iterable<NormalizedChatChunk> {
     const text = chunks.filter((c) => c.kind === 'content_delta').map((c) => c.delta ?? '').join('')
+    const reasoning = chunks.filter((c) => c.kind === 'reasoning_delta').map((c) => c.delta ?? '').join('')
+    if (reasoning) yield { id: 'x', kind: 'reasoning_delta', delta: reasoning }
     yield { id: 'x', kind: 'content_delta', delta: text }
     const finish = chunks.find((c) => c.kind === 'finish')
     yield { id: 'x', kind: 'finish', finishReason: finish?.finishReason ?? 'stop', usage: finish?.usage }

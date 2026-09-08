@@ -636,11 +636,13 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       try {
         const { ctx, adapter } = await buildRouteContext(deps, route, signal, requestId)
         let content = ''
+        let reasoning = ''
         let finishReason: string | undefined
         let usage: { inputTokens: number; outputTokens: number; cachedTokens?: number } | undefined
         for await (const chunk of adapter.chat(ctx, { ...normalized, model: route.providerModelId })) {
           if (ctx.signal.aborted) break
           if (chunk.kind === 'content_delta' && chunk.delta) content += chunk.delta
+          if (chunk.kind === 'reasoning_delta' && chunk.delta) reasoning += chunk.delta
           if (chunk.usage) usage = chunk.usage
           if (chunk.kind === 'finish') {
             finishReason = chunk.finishReason
@@ -668,7 +670,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
             id: requestId,
             object: 'chat.completion',
             choices: [
-              { index: 0, message: { role: 'assistant', content }, finish_reason: finishReason ?? 'stop' }
+              { index: 0, message: { role: 'assistant', content, ...(reasoning ? { reasoning_content: reasoning } : {}) }, finish_reason: finishReason ?? 'stop' }
             ],
             ...(usage
               ? { usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens } }
