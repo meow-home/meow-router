@@ -6,7 +6,7 @@ Accepted
 
 ## Decision
 
-Expose the AI gateway on `127.0.0.1:8317` by default.
+Expose the AI gateway on `127.0.0.1:17135` by default.
 
 ## Reasons
 

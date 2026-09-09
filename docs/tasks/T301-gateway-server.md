@@ -7,7 +7,7 @@ Implement a localhost HTTP gateway.
 ## Requirements
 
 - bind to 127.0.0.1;
-- default port 8317;
+- default port 17135;
 - graceful startup;
 - graceful shutdown;
 - health state;

@@ -61,7 +61,7 @@ export function Sidebar({
           <Pill tone={running ? 'live' : 'muted'}>{running ? 'gateway up' : 'gateway down'}</Pill>
         </div>
         <span>endpoint 127.0.0.1</span>
-        <span style={{ color: 'var(--text-faint)' }}>port 8317 / v1</span>
+        <span style={{ color: 'var(--text-faint)' }}>port 17135 / v1</span>
         <span style={{ color: 'var(--text-faint)' }}>{version ? `v${version}` : 'v—'}</span>
         <Button variant="ghost" onClick={onCheckUpdate} disabled={checking}>
           {checking ? 'Checking…' : 'Check update'}

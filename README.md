@@ -21,7 +21,7 @@ The primary consumer is a coding agent such as Meow Coding, OpenCode, Claude Cod
 
 The gateway requires an API key by default. Open Gateway -> Gateway API key and
 press Copy, then paste it into your coding agent as the API key for the
-`http://127.0.0.1:8317/v1` endpoint.
+`http://127.0.0.1:17135/v1` endpoint.
 
 ## Providers
 
@@ -46,7 +46,7 @@ from the provider API as `stale`; it never deletes models.
 
 Single local endpoint:
 
-`http://127.0.0.1:8317/v1`
+`http://127.0.0.1:17135/v1`
 
 The agent talks to Meow Gateway. Meow Gateway handles provider authentication, model selection, protocol translation, routing, streaming, retries and usage tracking.
 

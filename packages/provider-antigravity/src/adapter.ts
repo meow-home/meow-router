@@ -170,9 +170,16 @@ function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
             // resent in a multi-turn history; omitting it yields 400
             // INVALID_ARGUMENT.
             const { thoughtSignature } = t.id ? decodeToolCallId(t.id) : { thoughtSignature: undefined }
+            // The Cloud Code Assist backend translates Gemini `functionCall`
+            // parts into Anthropic `tool_use` blocks for Claude models, and
+            // `tool_use.id` is REQUIRED there. Echo the id from the client's
+            // history (OpenAI tool_calls[].id) so the backend can pair the
+            // call with its functionResponse; omitting it yields 400
+            // INVALID_ARGUMENT ("messages.N.content.0.tool_use.id: Field
+            // required").
             parts.push({
               ...(thoughtSignature ? { thoughtSignature } : {}),
-              functionCall: { name, args }
+              functionCall: { name, args, ...(t.id ? { id: t.id } : {}) }
             })
           }
         }
@@ -185,7 +192,13 @@ function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
         const name = (m.toolCallId && toolCallIdToName.get(m.toolCallId)) || m.toolCallId || 'unknown'
         contents.push({
           role: 'user',
-          parts: [{ functionResponse: { name, response: { result: String(m.content ?? '') } } }]
+          parts: [{
+            functionResponse: {
+              name,
+              ...(m.toolCallId ? { id: m.toolCallId } : {}),
+              response: { result: String(m.content ?? '') }
+            }
+          }]
         })
         break
       }

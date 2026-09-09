@@ -1,5 +1,6 @@
 import type { PersistedConnection } from '../connection'
 import type { GatewayConfigRow, NewGatewayConfig } from '../types'
+import { DEFAULT_PORT } from '../../gateway/server'
 
 type RawConfig = Omit<GatewayConfigRow, 'auth_enabled' | 'startup_enabled'> & {
   auth_enabled: number
@@ -26,7 +27,7 @@ export class GatewayConfigRepository {
       : {
           id: 1,
           host: '127.0.0.1',
-          port: 8317,
+          port: DEFAULT_PORT,
           auth_enabled: true,
           startup_enabled: false
         }

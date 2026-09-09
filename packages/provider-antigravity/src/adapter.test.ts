@@ -120,8 +120,8 @@ describe('AntigravityAdapter', () => {
     expect(contents.map((c) => c.role)).toEqual(['user', 'model', 'user'])
     expect(contents[0].parts[0].text).toBe('hi')
     expect(contents[1].parts[0].text).toBe('hello')
-    expect(contents[1].parts[1].functionCall).toEqual({ name: 'get_weather', args: { city: 'SF' } })
-    expect(contents[2].parts[0].functionResponse).toEqual({ name: 'get_weather', response: { result: 'sunny' } })
+    expect(contents[1].parts[1].functionCall).toEqual({ name: 'get_weather', args: { city: 'SF' }, id: 'call_1' })
+    expect(contents[2].parts[0].functionResponse).toEqual({ name: 'get_weather', id: 'call_1', response: { result: 'sunny' } })
     // system prompt merged into systemInstruction
     expect(body.request.systemInstruction?.parts[0].text).toBe('be helpful')
   })
@@ -322,7 +322,50 @@ describe('AntigravityAdapter', () => {
     }
     const modelPart = body.request.contents.find((c) => c.role === 'model')!.parts.find((p) => p.functionCall)!
     expect(modelPart.thoughtSignature).toBe('sig-abc')
-    expect(modelPart.functionCall).toEqual({ name: 'get_weather', args: { city: 'SF' } })
+    expect(modelPart.functionCall).toEqual({ name: 'get_weather', args: { city: 'SF' }, id: emitted!.id })
+
+    // The tool result must echo the same id so the backend can pair the
+    // functionResponse with its functionCall (required for Claude models
+    // where they become Anthropic tool_use / tool_result blocks).
+    const userPart = body.request.contents.find((c) => c.role === 'user' && c.parts.some((p) => (p as { functionResponse?: unknown }).functionResponse))!.parts.find((p) => (p as { functionResponse?: unknown }).functionResponse)!
+    expect(userPart.functionResponse).toMatchObject({ name: 'get_weather', id: emitted!.id })
+  })
+
+  it('sends tool_call ids in functionCall/functionResponse so a client-issued id survives the round-trip', async () => {
+    // Regression: for Claude models the Cloud Code Assist backend translates
+    // Gemini functionCall parts into Anthropic tool_use blocks, and
+    // tool_use.id is REQUIRED. The adapter used to omit the id entirely,
+    // producing 400 INVALID_ARGUMENT
+    // ("messages.3.content.0.tool_use.id: Field required") on the second
+    // agent turn whenever the client sent its own tool-call ids (as Claude
+    // Code / OpenAI-compatible clients do).
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [
+        { role: 'user' as const, content: 'hi' },
+        { role: 'assistant' as const, content: null, toolCalls: [{ id: 'toolu_01ABC', function: { name: 'get_weather', arguments: '{"city":"SF"}' } }] },
+        { role: 'tool' as const, content: 'sunny', toolCallId: 'toolu_01ABC' }
+      ],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+    const body = JSON.parse(sentBody!) as {
+      request: { contents: Array<{ role: string; parts: Array<{ functionCall?: { id?: string }; functionResponse?: { id?: string } }> }> }
+    }
+    const modelPart = body.request.contents.find((c) => c.role === 'model')!.parts.find((p) => p.functionCall)!
+    expect(modelPart.functionCall?.id).toBe('toolu_01ABC')
+    const userPart = body.request.contents.find((c) => c.role === 'user' && c.parts.some((p) => p.functionResponse))!.parts.find((p) => p.functionResponse)!
+    expect(userPart.functionResponse?.id).toBe('toolu_01ABC')
   })
 
   it('falls back to the next base URL when the primary endpoint returns a retryable 5xx', async () => {

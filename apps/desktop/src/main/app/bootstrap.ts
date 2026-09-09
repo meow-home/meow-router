@@ -4,7 +4,7 @@
 // service, gateway server and IPC handlers. This is the ONLY place provider
 // packages are instantiated; the gateway and renderer stay provider-neutral.
 //
-// The gateway binds to 127.0.0.1 on the configured port (default 8317).
+// The gateway binds to 127.0.0.1 on the configured port (default 17135).
 
 import { app, ipcMain, safeStorage, clipboard } from 'electron'
 import { join } from 'node:path'

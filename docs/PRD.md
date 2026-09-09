@@ -23,7 +23,7 @@ This causes:
 
 Provide one local endpoint:
 
-`http://127.0.0.1:8317/v1`
+`http://127.0.0.1:17135/v1`
 
 The agent talks to Meow Gateway. Meow Gateway handles provider authentication, model selection, protocol translation, routing, streaming, retries and usage tracking.
 

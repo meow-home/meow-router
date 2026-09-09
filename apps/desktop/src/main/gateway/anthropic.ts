@@ -179,10 +179,10 @@ export function anthropicToNormalized(body: AnthropicMessagesBody): NormalizedCh
         const text = blockText(m.content)
         const toolUses = m.content
           .filter((b) => b.type === 'tool_use')
-          .map((b) => ({
-            id: b.id,
+          .map((b, idx) => ({
+            id: b.id || `call_${idx}_${Math.random().toString(36).slice(2, 8)}`,
             type: 'function',
-            function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) }
+            function: { name: b.name ?? 'unknown', arguments: JSON.stringify(b.input ?? {}) }
           }))
         messages.push({
           role: 'assistant',

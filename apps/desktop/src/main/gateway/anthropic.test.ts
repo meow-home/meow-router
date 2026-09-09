@@ -94,7 +94,26 @@ describe('anthropicToNormalized', () => {
     expect(req.messages).toEqual([{ role: 'tool', content: 'sunny', toolCallId: 'call_1' }])
   })
 
-  it('maps assistant tool_use blocks to toolCalls', () => {
+  it('maps assistant tool_use blocks to toolCalls with fallback id if id is missing', () => {
+    const req = anthropicToNormalized({
+      model: 'm',
+      max_tokens: 10,
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', name: 'get_weather', input: { city: 'Hanoi' } }
+          ]
+        }
+      ]
+    })
+    expect(req.messages[0].role).toBe('assistant')
+    const tc = req.messages[0].toolCalls?.[0] as { id: string; function: { name: string } }
+    expect(tc.id).toMatch(/^call_0_/)
+    expect(tc.function.name).toBe('get_weather')
+  })
+
+  it('maps assistant tool_use blocks to toolCalls with explicit id', () => {
     const req = anthropicToNormalized({
       model: 'm',
       max_tokens: 10,

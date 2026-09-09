@@ -172,7 +172,7 @@ The gateway must:
 
 ## 8. Port lifecycle
 
-Default port: `8317`.
+Default port: `17135`.
 
 Startup:
 

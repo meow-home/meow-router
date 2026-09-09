@@ -7,6 +7,7 @@ import {
   ModelRepository,
   GatewayConfigRepository
 } from './repositories'
+import { DEFAULT_PORT } from '../gateway/server'
 
 describe('database connection & migrations', () => {
   let db: PersistedConnection
@@ -186,7 +187,7 @@ describe('GatewayConfigRepository', () => {
   it('returns defaults when unset', () => {
     const cfg = repo.get()
     expect(cfg.host).toBe('127.0.0.1')
-    expect(cfg.port).toBe(8317)
+    expect(cfg.port).toBe(DEFAULT_PORT)
     expect(cfg.auth_enabled).toBe(true)
   })
 
@@ -194,7 +195,7 @@ describe('GatewayConfigRepository', () => {
     // Simulate a pre-migration row, then re-run migrations over it.
     db.exec(`
       INSERT INTO gateway_config (id, host, port, auth_enabled, startup_enabled)
-      VALUES (1, '127.0.0.1', 8317, 0, 0)
+      VALUES (1, '127.0.0.1', ${DEFAULT_PORT}, 0, 0)
       ON CONFLICT(id) DO UPDATE SET auth_enabled = 0;
       DELETE FROM schema_migrations WHERE version = 6;
     `)
