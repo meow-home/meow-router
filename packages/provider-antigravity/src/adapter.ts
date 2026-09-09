@@ -26,6 +26,7 @@ function mapFinishReason(reason: string): string {
 
 interface AntigravityPart {
   text?: string
+  thoughtSignature?: string
   functionCall?: { name: string; args: Record<string, unknown> }
   functionResponse?: { name: string; response: Record<string, unknown> }
 }
@@ -33,6 +34,25 @@ interface AntigravityPart {
 interface AntigravityContent {
   role: 'user' | 'model'
   parts: AntigravityPart[]
+}
+
+// Encode a Gemini `thoughtSignature` into the tool-call id we hand to the
+// client. The OpenAI tool-call id is the only field that round-trips through
+// the client's assistant `tool_calls` and tool `tool_call_id`, so we stash the
+// signature there and recover it in toAntigravityContents. Without it,
+// resending a `functionCall` part without its `thoughtSignature` makes the
+// Cloud Code Assist API reject the request with 400 INVALID_ARGUMENT
+// ("Function call is missing a thought_signature in functionCall parts").
+function encodeToolCallId(index: number, thoughtSignature?: string): string {
+  if (!thoughtSignature) return `call_${index}`
+  return `call_${index}_ts_${Buffer.from(thoughtSignature, 'utf8').toString('base64url')}`
+}
+
+function decodeToolCallId(id: string): { index: number; thoughtSignature?: string } {
+  const m = /^call_(\d+)(?:_ts_(.+))?$/.exec(id)
+  if (!m) return { index: 0 }
+  const thoughtSignature = m[2] ? Buffer.from(m[2], 'base64url').toString('utf8') : undefined
+  return { index: Number(m[1]), thoughtSignature }
 }
 
 // Converts provider-neutral (OpenAI-style) messages into the Gemini/Antigravity
@@ -77,7 +97,16 @@ function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
             } else if (fn.arguments && typeof fn.arguments === 'object') {
               args = fn.arguments as Record<string, unknown>
             }
-            parts.push({ functionCall: { name, args } })
+            // Recover the Gemini thoughtSignature we stashed in the tool-call
+            // id (see encodeToolCallId). The Cloud Code Assist API requires a
+            // `functionCall` part to carry its `thoughtSignature` when it is
+            // resent in a multi-turn history; omitting it yields 400
+            // INVALID_ARGUMENT.
+            const { thoughtSignature } = t.id ? decodeToolCallId(t.id) : { thoughtSignature: undefined }
+            parts.push({
+              ...(thoughtSignature ? { thoughtSignature } : {}),
+              functionCall: { name, args }
+            })
           }
         }
         if (parts.length > 0) contents.push({ role: 'model', parts })
@@ -421,11 +450,16 @@ export class AntigravityAdapter implements ProviderAdapter {
           // The model can respond with a function call (tool call) instead of
           // text. Emit it as a tool_call_delta so the client sees the call
           // rather than an empty completion. `args` is an object; serialize it.
+          // The Gemini `thoughtSignature` (if present) is stashed in the
+          // tool-call id so it survives the OpenAI round-trip and can be
+          // re-attached when the client resends the call (see
+          // encodeToolCallId / toAntigravityContents).
           const fc = part['functionCall'] as { name?: string; args?: Record<string, unknown> } | undefined
           if (fc && typeof fc.name === 'string') {
+            const thoughtSignature = typeof part['thoughtSignature'] === 'string' ? part['thoughtSignature'] : undefined
             toolCalls.push({
               index: toolCalls.length,
-              id: `call_${toolCalls.length}`,
+              id: encodeToolCallId(toolCalls.length, thoughtSignature),
               name: fc.name,
               arguments: fc.args ? JSON.stringify(fc.args) : '{}'
             })

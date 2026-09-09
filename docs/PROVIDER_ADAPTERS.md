@@ -129,6 +129,13 @@ key. Antigravity is the first such provider.
   `400 INVALID_ARGUMENT`, surfacing as "Could not resolve Antigravity project".
 - Access tokens are auto-refreshed near expiry by the OAuth token manager before
   a request is sent.
+- **Tool-call thought signatures**: the Cloud Code Assist API requires a
+  `functionCall` part to carry its `thoughtSignature` when it is resent in a
+  multi-turn history; omitting it yields `400 INVALID_ARGUMENT` ("Function call
+  is missing a thought_signature in functionCall parts"). The adapter stashes
+  the signature in the OpenAI tool-call `id` it emits to the client and recovers
+  it when the client echoes that id back in an assistant `tool_calls`/tool
+  `tool_call_id`, so the round-trip works without any client-side change.
 - The gateway itself is provider-neutral and treats an OAuth provider like any
   other: it reads the credential at `provider:<id>` and dispatches through the
   adapter, so `gateway/server.ts` requires no special-casing.

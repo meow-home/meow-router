@@ -184,6 +184,58 @@ describe('AntigravityAdapter', () => {
     expect(finishes[0].finishReason).toBe('stop')
   })
 
+  it('round-trips the Gemini thoughtSignature through the tool-call id so a resent functionCall is not rejected', async () => {
+    // Regression: the Cloud Code Assist API requires a `functionCall` part to
+    // carry its `thoughtSignature` when it is resent in a multi-turn history.
+    // The adapter used to drop the signature, so the second turn (assistant
+    // tool_calls + tool result) was rejected with 400 INVALID_ARGUMENT
+    // ("Function call is missing a thought_signature in functionCall parts").
+    // The signature is stashed in the tool-call id the adapter emits, then
+    // recovered when the client echoes that id back.
+    const sse = [
+      'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig-abc","functionCall":{"name":"get_weather","args":{"city":"SF"}}}]}}]}}',
+      'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}',
+      'data: [DONE]'
+    ].join('\n\n') + '\n\n'
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: sse }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+
+    // Turn 1: model returns a functionCall with a thoughtSignature.
+    const chunks: Array<{ kind: string; toolCall?: { id?: string; name?: string; arguments?: string } }> = []
+    for await (const c of adapter.chat(ctx(), { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }], stream: true })) chunks.push(c as never)
+    const emitted = chunks.find((c) => c.kind === 'tool_call_delta')?.toolCall
+    expect(emitted?.name).toBe('get_weather')
+    expect(emitted?.id).toMatch(/^call_0_ts_/)
+
+    // Turn 2: client echoes the assistant tool_call (with the id we emitted)
+    // plus the tool result. The reconstructed functionCall must carry the
+    // thoughtSignature.
+    const req = {
+      model: 'm',
+      messages: [
+        { role: 'user' as const, content: 'hi' },
+        { role: 'assistant' as const, content: null, toolCalls: [{ id: emitted!.id, function: { name: 'get_weather', arguments: '{"city":"SF"}' } }] },
+        { role: 'tool' as const, content: 'sunny', toolCallId: emitted!.id }
+      ],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+    const body = JSON.parse(sentBody!) as {
+      request: { contents: Array<{ role: string; parts: Array<{ thoughtSignature?: string; functionCall?: unknown; functionResponse?: unknown }> }> }
+    }
+    const modelPart = body.request.contents.find((c) => c.role === 'model')!.parts.find((p) => p.functionCall)!
+    expect(modelPart.thoughtSignature).toBe('sig-abc')
+    expect(modelPart.functionCall).toEqual({ name: 'get_weather', args: { city: 'SF' } })
+  })
+
   it('falls back to the next base URL when the primary endpoint returns a retryable 5xx', async () => {
     // Regression: the streaming request only tried the single configured base
     // URL. When it intermittently 5xx'd, the user saw a spurious
