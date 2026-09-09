@@ -81,6 +81,7 @@ Needs a stable OpenAI-compatible endpoint for integration testing.
 - Latency.
 - Provider/model.
 - Error count.
+- Antigravity 5h/weekly quota display on OAuth cards.
 
 ### Security
 
