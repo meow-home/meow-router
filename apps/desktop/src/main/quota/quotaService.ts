@@ -10,7 +10,7 @@ export interface QuotaServiceDeps {
   tokenManager: OAuthTokenManager
   providerRepo: ProviderRepository
   /** Credential service for resolving OAuth token bundles. */
-  getCredential: (ref: string) => Promise<string>
+  getCredential: (ref: string) => Promise<string | null>
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
   pollIntervalMs?: number
 }
@@ -21,7 +21,7 @@ export class QuotaService {
   private readonly cache = new Map<string, AntigravityQuotaData>()
   private readonly adapter: AntigravityAdapter
   private readonly providerRepo: ProviderRepository
-  private readonly getCredential: (ref: string) => Promise<string>
+  private readonly getCredential: (ref: string) => Promise<string | null>
   private readonly logger: Pick<Console, 'log' | 'warn' | 'error'>
   private readonly pollIntervalMs: number
   private timer: ReturnType<typeof setInterval> | null = null
@@ -59,6 +59,7 @@ export class QuotaService {
     const credentialRef = `provider:${providerId}`
     try {
       const credential = await this.getCredential(credentialRef)
+      if (!credential) throw new Error('No stored credential for this account.')
       const raw = await this.adapter.getQuota({
         credentialRef,
         credential,

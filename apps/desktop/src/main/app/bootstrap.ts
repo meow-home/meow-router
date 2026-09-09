@@ -29,7 +29,8 @@ import { SecureOAuthTokenStore } from '../oauth/oauthTokenStore'
 import { OAuthLoginService } from '../oauth/oauthLoginService'
 import { OAUTH_CLIENT_FOR_TYPE, clientForType } from '../oauth/antigravityConfig'
 import { OAuthTokenManager } from '@meow-gateway/oauth-core'
-import type { OAuthAccountMeta, OAuthLoginStart } from '../../shared/ipc'
+import { QuotaService } from '../quota/quotaService'
+import type { OAuthAccountMeta, OAuthLoginStart, AntigravityQuotaData } from '../../shared/ipc'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
 import {
   GATEWAY_KEY_REF,
@@ -116,7 +117,21 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     config: OAUTH_CLIENT_FOR_TYPE['antigravity'],
     store: oauthTokenStore
   })
-  registry.register(createAntigravityAdapter('antigravity', { tokenManager: oauthManager }))
+  const antigravityAdapter = createAntigravityAdapter('antigravity', { tokenManager: oauthManager })
+  registry.register(antigravityAdapter)
+
+  // QuotaService polls the Antigravity quota endpoints on an interval and
+  // caches the parsed results for the renderer. It is wired to the same
+  // credential store and token manager as the adapter so it can resolve the
+  // OAuth token bundle for each account.
+  const quotaService = new QuotaService({
+    adapter: antigravityAdapter,
+    tokenManager: oauthManager,
+    providerRepo,
+    getCredential: (ref) => credentials.getCredential(ref),
+    logger: console
+  })
+  quotaService.start()
 
   // A key must exist before the gateway can ever be started, so the Gateway
   // view has something to show on a fresh install. A credential store that
@@ -165,7 +180,8 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     gateway,
     credentials,
     authPolicy,
-    oauthLogin
+    oauthLogin,
+    quotaService
   })
 
   // Guard against Electron not providing safeStorage in some dev contexts.
@@ -201,10 +217,11 @@ interface IpcHandlers {
   credentials: CredentialService
   authPolicy: AuthPolicyCache
   oauthLogin: OAuthLoginService
+  quotaService: QuotaService
 }
 
 function registerIpcHandlers(handlers: IpcHandlers): void {
-  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway, credentials, authPolicy, oauthLogin } = handlers
+  const { repo, modelRepo, providerService, usage, usageRepo, configRepo, gateway, credentials, authPolicy, oauthLogin, quotaService } = handlers
 
   // --- Virtual-model CRUD (unchanged) --------------------------------------
   ipcMain.handle(IPC_CHANNELS.virtualModel.list, async (): Promise<IpcResult<VirtualModelRow[]>> => {
@@ -396,6 +413,15 @@ function registerIpcHandlers(handlers: IpcHandlers): void {
   ipcMain.handle(IPC_CHANNELS.oauth.logout, async (_e, providerId: string): Promise<IpcResult<void>> => {
     if (!isNonEmptyString(providerId)) return badRequest('`providerId` must be a non-empty string.')
     return wrap(() => oauthLogin.logoutAccount(providerId))
+  })
+
+  // --- Quota ----------------------------------------------------------------
+  ipcMain.handle(IPC_CHANNELS.quota.list, async (): Promise<IpcResult<AntigravityQuotaData[]>> => {
+    return wrap(() => quotaService.getAll())
+  })
+
+  ipcMain.handle(IPC_CHANNELS.quota.refresh, async (): Promise<IpcResult<AntigravityQuotaData[]>> => {
+    return wrap(() => quotaService.refreshAll())
   })
 
   // --- Usage ----------------------------------------------------------------
