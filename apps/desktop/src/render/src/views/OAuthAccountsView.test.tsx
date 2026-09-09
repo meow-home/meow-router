@@ -92,7 +92,7 @@ describe('OAuthAccountsView', () => {
     render(<OAuthAccountsView />)
     const btn = await screen.findByRole('button', { name: /sign in with google/i })
     fireEvent.click(btn)
-    await waitFor(() => expect(btn).toBeDisabled())
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(true))
   })
 
   it('shows error banner on login failure', async () => {
