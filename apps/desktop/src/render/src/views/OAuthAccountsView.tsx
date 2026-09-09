@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { OAuthAccountMeta, AntigravityQuotaData } from '@shared/ipc'
 import { ViewHeader, Button, Pill, ErrorBanner, EmptyState } from '../components/ui'
-import { QuotaBar } from '../components/QuotaBar'
+import { QuotaGroup } from '../components/QuotaGroup'
 
 const OAUTH_TYPE = 'antigravity'
 
@@ -124,9 +124,6 @@ export function OAuthAccountsView() {
           <GoogleLogo />
           {loggingIn ? 'Waiting for authorisation…' : 'Sign in with Google'}
         </button>
-        <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
-          {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
-        </Button>
       </ViewHeader>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -161,11 +158,7 @@ export function OAuthAccountsView() {
                   ) : quotaData[a.providerId].items.length === 0 ? (
                     <div className="oauth-quota-empty">No quota data</div>
                   ) : (
-                    <div className="oauth-quota-bars">
-                      {quotaData[a.providerId].items.map((item) => (
-                        <QuotaBar key={item.key} item={item} />
-                      ))}
-                    </div>
+                    <QuotaGroup items={quotaData[a.providerId].items} />
                   )}
                 </div>
               )}
@@ -181,6 +174,11 @@ export function OAuthAccountsView() {
               </div>
             </div>
           ))}
+        </div>
+        <div className="quota-refresh-row">
+          <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
+            {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
+          </Button>
         </div>
       </div>
     </div>

@@ -161,3 +161,29 @@ describe('OAuthAccountsView quota display', () => {
     expect(await screen.findByText('Refreshing quota…')).toBeTruthy()
   })
 })
+
+describe('OAuthAccountsView quota grouping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    gw.oauthListAccounts.mockResolvedValue([validAccount])
+    gw.quotaList.mockResolvedValue([])
+    gw.quotaRefresh.mockResolvedValue([])
+  })
+
+  it('renders Claude and Gemini column titles from quota data', async () => {
+    gw.quotaList.mockResolvedValue(mockQuotaData)
+    render(<OAuthAccountsView />)
+    expect(await screen.findByText('Claude')).toBeTruthy()
+    expect(screen.getByText('Gemini')).toBeTruthy()
+  })
+
+  it('Refresh quota button is below the account list', async () => {
+    render(<OAuthAccountsView />)
+    const btn = await screen.findByRole('button', { name: /refresh quota/i })
+    const grid = document.querySelector('.oauth-grid')
+    const row = document.querySelector('.quota-refresh-row')
+    expect(grid).toBeTruthy()
+    expect(row).toBeTruthy()
+    expect(row?.contains(btn)).toBe(true)
+  })
+})
