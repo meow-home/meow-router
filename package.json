@@ -1,10 +1,12 @@
 {
   "name": "meow-gateway",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.9",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "pnpm --filter @meow-gateway/desktop dev",
     "build": "pnpm --filter @meow-gateway/desktop build",
