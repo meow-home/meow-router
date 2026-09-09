@@ -2,7 +2,7 @@
 
 Base URL:
 
-`http://127.0.0.1:8317/v1`
+`http://127.0.0.1:17135/v1`
 
 ## Authentication
 
@@ -195,6 +195,22 @@ Use OpenAI-compatible error structure where possible:
 ```
 
 Never return provider secrets or upstream authorization headers.
+
+### Request body size limit
+
+The gateway accepts request bodies up to **10 MiB** by default. A body that
+exceeds the limit is drained (the connection is not torn down) and rejected
+with an HTTP `413` and the standard error envelope:
+
+```json
+{
+  "error": {
+    "message": "Request body exceeds the size limit.",
+    "type": "invalid_request_error",
+    "code": "INVALID_REQUEST"
+  }
+}
+```
 
 ## API compatibility strategy
 

@@ -19,14 +19,18 @@ export interface ChatCompletionsBody {
   responseFormat?: unknown
 }
 
-const MAX_BODY_BYTES = 256 * 1024 // 256 KiB
+// Default cap for a single gateway request body. 256 KiB was too small for
+// long agent conversations (large tool-call histories, big code snippets) and
+// produced spurious "other side closed" failures. 10 MiB comfortably covers
+// realistic chat payloads while still bounding memory for a localhost gateway.
+export const MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MiB
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function invalidRequest(msg: string): ProviderError {
-  return new ProviderError({ type: 'CLIENT_ERROR', message: msg, retryable: false })
+function invalidRequest(msg: string, status = 400): ProviderError {
+  return new ProviderError({ type: 'CLIENT_ERROR', message: msg, status, retryable: false })
 }
 
 export function parseJsonBody(raw: string): unknown {
@@ -86,20 +90,28 @@ export function createBodyReader(maxBytes: number = MAX_BODY_BYTES): {
   read(req: unknown): Promise<string>
 } {
   return {
-    read(req: { on(event: string, cb: (chunk: Buffer) => void): void; destroy(err?: Error): void }) {
+    read(req: { on(event: string, cb: (chunk: Buffer) => void): void; resume(): void }) {
       return new Promise<string>((resolve, reject) => {
         let data = ''
         let size = 0
+        let overflow = false
         req.on('data', (chunk: Buffer) => {
+          if (overflow) return
           size += chunk.length
           if (size > maxBytes) {
-            req.destroy(new Error('Payload too large'))
-            reject(invalidRequest('Request body exceeds the size limit.'))
+            // Do NOT destroy the socket: that makes the client see a dead
+            // connection ("other side closed") instead of a readable error.
+            // Drain the remainder so the server can still send a 413 response.
+            overflow = true
+            req.resume()
+            reject(invalidRequest('Request body exceeds the size limit.', 413))
             return
           }
           data += chunk.toString('utf8')
         })
-        req.on('end', () => resolve(data))
+        req.on('end', () => {
+          if (!overflow) resolve(data)
+        })
         req.on('error', (e) => reject(e))
       })
     }

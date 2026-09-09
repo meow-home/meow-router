@@ -1,6 +1,6 @@
 // Localhost HTTP gateway server.
 //
-// Binds ONLY to 127.0.0.1 (loopback), default port 8317. Never binds 0.0.0.0.
+// Binds ONLY to 127.0.0.1 (loopback), default port 17135. Never binds 0.0.0.0.
 // Fully dependency-injected so tests run it against random ports with fakes.
 //
 // Routes:
@@ -20,8 +20,8 @@ import {
 } from '@meow-gateway/provider-core'
 import type { GatewayDependencies, GatewayUsage, RouteCandidate } from './types'
 import { nullLogger } from './types'
-import { toGatewayErrorBody, httpStatusFor } from './errors'
-import { parseJsonBody, validateChatCompletionsBody, createBodyReader } from './validate'
+import { toGatewayErrorBody, httpStatusForError } from './errors'
+import { parseJsonBody, validateChatCompletionsBody, createBodyReader, MAX_BODY_BYTES } from './validate'
 import { chunkToSseData, createRequestId } from './sse'
 import { checkAuth } from './auth'
 import {
@@ -32,7 +32,7 @@ import {
   anthropicNonStreamingResponse
 } from './anthropic'
 
-export const DEFAULT_PORT = 8317
+export const DEFAULT_PORT = 17135
 export const DEFAULT_HOST = '127.0.0.1'
 export const GATEWAY_HOST = DEFAULT_HOST
 export const GATEWAY_PORT = DEFAULT_PORT
@@ -44,6 +44,8 @@ export interface GatewayServerOptions {
   // Per-request hard timeout in ms. The provider request is aborted (-> the
   // adapter surfaces TIMEOUT) once this elapses. Defaults to 120_000.
   requestTimeoutMs?: number
+  // Max accepted request body size in bytes. Defaults to MAX_BODY_BYTES (10 MiB).
+  maxBodyBytes?: number
 }
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
@@ -60,6 +62,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
   const port = opts.port ?? DEFAULT_PORT
   const version = opts.version ?? '0.5.2'
   const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+  const maxBodyBytes = opts.maxBodyBytes ?? MAX_BODY_BYTES
   const logger = deps.logger ?? nullLogger
 
   let server: Server | undefined
@@ -126,7 +129,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
       res.writeHead(404, { 'content-type': 'application/json' })
       res.end(JSON.stringify(toGatewayErrorBody(new Error('Not found'))))
     } catch (err) {
-      const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+      const status = httpStatusForError(err)
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(toGatewayErrorBody(err)))
       logger.error('gateway error', { requestId, error: err instanceof Error ? err.message : String(err) })
@@ -142,7 +145,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     requestId: string,
     startedAt: number
   ): Promise<void> {
-    const bodyReader = createBodyReader()
+    const bodyReader = createBodyReader(maxBodyBytes)
     const raw = await bodyReader.read(req)
     const body = validateChatCompletionsBody(parseJsonBody(raw))
 
@@ -209,7 +212,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     requestId: string,
     startedAt: number
   ): Promise<void> {
-    const bodyReader = createBodyReader()
+    const bodyReader = createBodyReader(maxBodyBytes)
     const raw = await bodyReader.read(req)
     const body = validateAnthropicMessagesBody(parseAnthropicMessagesBody(raw))
 
@@ -415,7 +418,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
         lastErr = err
         const code = err instanceof ProviderError ? err.type : 'INTERNAL_ERROR'
         if (!isRetryable(err)) {
-          const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+          const status = httpStatusForError(err)
           if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
           res.end(JSON.stringify(toGatewayErrorBody(err)))
           await recordUsage(deps, {
@@ -454,7 +457,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     }
 
     const err = lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'All routes failed.', retryable: false })
-    const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+    const status = httpStatusForError(err)
     if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify(toGatewayErrorBody(err)))
   }
@@ -695,7 +698,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
         lastErr = err
         const code = err instanceof ProviderError ? err.type : 'INTERNAL_ERROR'
         if (!isRetryable(err)) {
-          const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+          const status = httpStatusForError(err)
           if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
           res.end(JSON.stringify(toGatewayErrorBody(err)))
           await recordUsage(deps, {
@@ -734,7 +737,7 @@ export function createGatewayServer(deps: GatewayDependencies, opts: GatewayServ
     }
 
     const err = lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'All routes failed.', retryable: false })
-    const status = err instanceof ProviderError ? httpStatusFor(err.type) : 500
+    const status = httpStatusForError(err)
     if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify(toGatewayErrorBody(err)))
   }

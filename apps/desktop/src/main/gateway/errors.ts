@@ -36,6 +36,14 @@ export function httpStatusFor(type: GatewayErrorType): number {
   }
 }
 
+// Resolve the HTTP status for a thrown error, preferring an explicit status
+// carried on a ProviderError (e.g. 413 for an oversized body) over the default
+// mapping for its type.
+export function httpStatusForError(err: unknown): number {
+  if (err instanceof ProviderError && err.status !== undefined) return err.status
+  return err instanceof ProviderError ? httpStatusFor(err.type) : 500
+}
+
 export function gatewayErrorCode(type: GatewayErrorType): string {
   switch (type) {
     case 'AUTH_ERROR':

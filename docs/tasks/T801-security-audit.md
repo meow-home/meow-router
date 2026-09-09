@@ -44,7 +44,11 @@ No unresolved critical/high security issue.
   rejects loopback (localhost/127.x/::1), private RFC1918, link-local
   (169.254.x/fe80:), and cloud metadata (169.254.169.254/metadata.google.internal)
   for custom provider endpoints; openai adapter calls it before every request.
-- **HTTP body-size limit**: `createBodyReader` caps at 256 KiB.
+- **HTTP body-size limit**: `createBodyReader` caps at 10 MiB (default
+  `MAX_BODY_BYTES`). Oversized bodies are drained (never socket-destroyed) and
+  rejected with a readable HTTP 413 JSON error, so clients see a proper error
+  instead of "other side closed". The cap is configurable per server via the
+  `maxBodyBytes` option.
 - **Timeout limit**: gateway `requestTimeoutMs` (default 120_000 ms) aborts hung
   provider requests; cleared in `finally`.
 - **Request cancellation**: AbortController tied to client `res.on('close')` so a

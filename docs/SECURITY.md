@@ -99,7 +99,8 @@ Do not log:
 
 ### HTTP
 
-- Limit body size.
+- Limit body size (default 10 MiB; oversized bodies are drained and rejected
+  with HTTP 413, never socket-destroyed).
 - Validate JSON.
 - Apply request timeout.
 - Support AbortSignal.

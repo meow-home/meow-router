@@ -123,8 +123,12 @@ function makeHarness(opts?: { adapter?: ProviderAdapter; credential?: string | n
   return { registry, usages, logs, deps }
 }
 
-async function startServer(deps: GatewayDependencies, port = 0): Promise<{ server: GatewayServer; addr: { host: string; port: number } }> {
-  const server = createGatewayServer(deps, { port, host: DEFAULT_HOST })
+async function startServer(
+  deps: GatewayDependencies,
+  port = 0,
+  opts: { maxBodyBytes?: number } = {}
+): Promise<{ server: GatewayServer; addr: { host: string; port: number } }> {
+  const server = createGatewayServer(deps, { port, host: DEFAULT_HOST, ...opts })
   const addr = await server.start()
   return { server, addr }
 }
@@ -262,6 +266,27 @@ describe('chat completions (T304)', () => {
     }
   })
 
+  it('oversized body returns a readable 413 instead of a dead connection', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps, 0, { maxBodyBytes: 1024 })
+    try {
+      const res = await fetch(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: 'x'.repeat(4096) }]
+        })
+      })
+      expect(res.status).toBe(413)
+      const body = (await res.json()) as GatewayJsonResponse
+      expect(body.error.code).toBe('INVALID_REQUEST')
+      expect(body.error.message).toContain('size limit')
+    } finally {
+      await server.stop()
+    }
+  })
+
   it('missing credential maps to AUTH_ERROR', async () => {
     const harness = makeHarness({ credential: null })
     const { server, addr } = await startServer(harness.deps)
@@ -372,6 +397,28 @@ describe('anthropic messages API (/v1/messages)', () => {
       })
       expect(status).toBe(400)
       expect(body.error.code).toBe('INVALID_REQUEST')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('oversized body returns a readable 413 instead of a dead connection', async () => {
+    const harness = makeHarness()
+    const { server, addr } = await startServer(harness.deps, 0, { maxBodyBytes: 1024 })
+    try {
+      const res = await fetch(`http://${addr.host}:${addr.port}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          max_tokens: 100,
+          messages: [{ role: 'user', content: 'x'.repeat(4096) }]
+        })
+      })
+      expect(res.status).toBe(413)
+      const body = (await res.json()) as GatewayJsonResponse
+      expect(body.error.code).toBe('INVALID_REQUEST')
+      expect(body.error.message).toContain('size limit')
     } finally {
       await server.stop()
     }
