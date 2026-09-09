@@ -522,7 +522,7 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
 
 /* Refresh quota row below the account list */
 .quota-refresh-row {
-  display: flex; justify-content: flex-end; margin-top: var(--space-3);
+  display: flex; justify-content: flex-end; margin-bottom: var(--space-3);
 }
 .quota-refresh-row .btn {
   padding: 8px 16px; font-size: var(--fs-2);

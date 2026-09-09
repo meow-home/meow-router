@@ -177,13 +177,14 @@ describe('OAuthAccountsView quota grouping', () => {
     expect(screen.getByText('Gemini')).toBeTruthy()
   })
 
-  it('Refresh quota button is below the account list', async () => {
+  it('Refresh quota button sits in the quota-refresh row below the header', async () => {
     render(<OAuthAccountsView />)
     const btn = await screen.findByRole('button', { name: /refresh quota/i })
-    const grid = document.querySelector('.oauth-grid')
     const row = document.querySelector('.quota-refresh-row')
-    expect(grid).toBeTruthy()
     expect(row).toBeTruthy()
     expect(row?.contains(btn)).toBe(true)
+    // Refresh row is inside the scroll container, above the grid
+    const mt = document.querySelector('.mt-4')
+    expect(mt?.contains(row)).toBe(true)
   })
 })

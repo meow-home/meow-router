@@ -129,6 +129,11 @@ export function OAuthAccountsView() {
       {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <div className="mt-4">
+        <div className="quota-refresh-row">
+          <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
+            {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
+          </Button>
+        </div>
         {accounts.length === 0 && (
           <EmptyState
             title="No connected accounts"
@@ -174,11 +179,6 @@ export function OAuthAccountsView() {
               </div>
             </div>
           ))}
-        </div>
-        <div className="quota-refresh-row">
-          <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
-            {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
-          </Button>
         </div>
       </div>
     </div>
