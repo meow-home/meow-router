@@ -9,3 +9,4 @@ export {
 } from './metadata'
 export { resolveProjectId, type ResolveProjectParams } from './project'
 export { createAntigravityAdapter, type AntigravityAdapterOptions } from './adapter'
+export { parseQuotaResponse, type QuotaItem, type RawQuotaResponse } from './quotaParser'

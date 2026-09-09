@@ -472,3 +472,114 @@ describe('AntigravityAdapter', () => {
     expect(finishes[0].finishReason).toBe('stop')
   })
 })
+
+describe('AntigravityAdapter.getQuota', () => {
+  // A fetcher that actually parses the response text into JSON (the shared
+  // fetcherFor helper always returns {} from json()).
+  function jsonFetcher(handler: (url: string, init: Parameters<Fetcher>[1]) => Promise<{ ok: boolean; status: number; text: string }>): Fetcher {
+    return async (url, init) => {
+      const r = await handler(String(url), init)
+      return {
+        ok: r.ok,
+        status: r.status,
+        headers: { get: () => 'application/json' },
+        text: async () => r.text,
+        json: async () => (r.text ? JSON.parse(r.text) : {}),
+        body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(r.text)); c.close() } })
+      } as never
+    }
+  }
+
+  function quotaFetcherFor(modelsResponse: unknown, summaryResponse: unknown, modelStatus = 200, summaryStatus = 200): Fetcher {
+    return jsonFetcher(async (url) => {
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'proj-1' } }) }
+      if (url.includes('fetchAvailableModels')) return { ok: modelStatus === 200, status: modelStatus, text: JSON.stringify(modelsResponse) }
+      if (url.includes('retrieveUserQuotaSummary')) return { ok: summaryStatus === 200, status: summaryStatus, text: JSON.stringify(summaryResponse) }
+      return { ok: false, status: 404, text: '' }
+    })
+  }
+
+  const modelsResponse = {
+    models: {
+      'claude-3-5-sonnet-high': { displayName: 'Claude', quotaInfo: { remainingFraction: 0.5, resetTime: '2026-09-09T12:00:00Z' } }
+    }
+  }
+  const summaryResponse = {
+    groups: [{ buckets: [{ bucketId: '3p-5h', displayName: 'Claude (5h)', remainingFraction: 0.65, resetTime: '2026-09-09T12:00:00Z' }] }]
+  }
+
+  it('returns models + quotaSummary when both endpoints succeed', async () => {
+    const adapter = createAntigravityAdapter('antigravity', { fetcher: quotaFetcherFor(modelsResponse, summaryResponse) })
+    const result = await adapter.getQuota(ctx())
+    expect(result.models).toBeDefined()
+    expect(result.quotaSummary).toBeDefined()
+    expect(result.quotaSummary?.groups?.[0].buckets?.[0].bucketId).toBe('3p-5h')
+  })
+
+  it('returns models only when summary endpoint 404s', async () => {
+    const adapter = createAntigravityAdapter('antigravity', { fetcher: quotaFetcherFor(modelsResponse, summaryResponse, 200, 404) })
+    const result = await adapter.getQuota(ctx())
+    expect(result.models).toBeDefined()
+    expect(result.quotaSummary).toBeUndefined()
+  })
+
+  it('returns summary only when models endpoint 404s', async () => {
+    const adapter = createAntigravityAdapter('antigravity', { fetcher: quotaFetcherFor(modelsResponse, summaryResponse, 404, 200) })
+    const result = await adapter.getQuota(ctx())
+    expect(result.models).toEqual({})
+    expect(result.quotaSummary).toBeDefined()
+  })
+
+  it('throws PROVIDER_UNAVAILABLE when both endpoints fail', async () => {
+    const adapter = createAntigravityAdapter('antigravity', { fetcher: quotaFetcherFor(modelsResponse, summaryResponse, 404, 404) })
+    await expect(adapter.getQuota(ctx())).rejects.toMatchObject({ type: 'PROVIDER_UNAVAILABLE' })
+  })
+
+  it('resolves project id before calling quota endpoints', async () => {
+    let loadCalls = 0
+    const fetcher = jsonFetcher(async (url) => {
+      if (url.includes('loadCodeAssist')) { loadCalls++; return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'proj-1' } }) } }
+      if (url.includes('fetchAvailableModels')) return { ok: true, status: 200, text: JSON.stringify(modelsResponse) }
+      if (url.includes('retrieveUserQuotaSummary')) return { ok: true, status: 200, text: JSON.stringify(summaryResponse) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    await adapter.getQuota(ctx({ credential: JSON.stringify({ accessToken: AUTH, refreshToken: 'rt', tokenType: 'Bearer', expiresAt: Date.now() + 1e10 }) }))
+    expect(loadCalls).toBe(1)
+  })
+
+  it('tries fallback base URLs on network error', async () => {
+    const urls: string[] = []
+    const fetcher = jsonFetcher(async (url) => {
+      urls.push(String(url))
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'proj-1' } }) }
+      if (url.includes('fetchAvailableModels')) {
+        // Primary base URL (mock.example.com) throws; fallback succeeds.
+        if (url.includes('mock.example.com')) throw new Error('network down')
+        return { ok: true, status: 200, text: JSON.stringify(modelsResponse) }
+      }
+      if (url.includes('retrieveUserQuotaSummary')) return { ok: true, status: 200, text: JSON.stringify(summaryResponse) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const result = await adapter.getQuota(ctx())
+    expect(result.models).toBeDefined()
+    expect(urls.some((u) => u.includes('cloudcode-pa.googleapis.com'))).toBe(true)
+  })
+
+  it('sends Bearer auth header', async () => {
+    let authHeader: string | undefined
+    const fetcher = jsonFetcher(async (url, init) => {
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'proj-1' } }) }
+      if (url.includes('fetchAvailableModels')) {
+        authHeader = (init?.headers as Record<string, string> | undefined)?.['Authorization']
+        return { ok: true, status: 200, text: JSON.stringify(modelsResponse) }
+      }
+      if (url.includes('retrieveUserQuotaSummary')) return { ok: true, status: 200, text: JSON.stringify(summaryResponse) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    await adapter.getQuota(ctx())
+    expect(authHeader).toBe(`Bearer ${AUTH}`)
+  })
+})

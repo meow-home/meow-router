@@ -6,9 +6,11 @@ import {
 import { OAuthTokenManager, type OAuthTokenBundle, type Fetcher, defaultFetcher } from '@meow-gateway/oauth-core'
 import { antigravityMetadata, ANTIGRAVITY_SYSTEM_PROMPT } from './metadata'
 import { resolveProjectId } from './project'
+import type { RawQuotaResponse } from './quotaParser'
 
 const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse'
 const FETCH_MODELS_PATH = '/v1internal:fetchAvailableModels'
+const QUOTA_SUMMARY_PATH = '/v1internal:retrieveUserQuotaSummary'
 
 function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path
@@ -325,6 +327,56 @@ export class AntigravityAdapter implements ProviderAdapter {
       displayName: id,
       capabilities: { streaming: true, tools: true, vision: true, reasoning: true, structuredOutput: false }
     }))
+  }
+
+
+  // Fetches the user's current quota from the Cloud Code Assist API. Returns
+  // the raw responses from fetchAvailableModels + retrieveUserQuotaSummary so
+  // the caller (QuotaService) can parse them into display items. Both endpoints
+  // are best-effort: if one 404s we still return the other. Only when both
+  // fail do we surface a PROVIDER_UNAVAILABLE error.
+  async getQuota(ctx: ProviderContext): Promise<RawQuotaResponse> {
+    this.assertEndpointSafe(ctx)
+    const { accessToken, bundle } = await this.resolveAuth(ctx)
+    const projectId = await this.resolveProject(ctx, accessToken, bundle)
+    const headers = await this.headers(ctx, accessToken)
+
+    let models: RawQuotaResponse['models'] = {}
+    let quotaSummary: RawQuotaResponse['quotaSummary']
+    let modelsOk = false
+    let summaryOk = false
+
+    for (const base of this.baseUrlsToTry(ctx)) {
+      if (!modelsOk) {
+        try {
+          const res = await this.fetcher(joinUrl(base, FETCH_MODELS_PATH), { method: 'POST', headers, body: '{}', signal: ctx.signal })
+          if (res.ok) {
+            const data = (await res.json()) as { payload?: { models?: RawQuotaResponse['models'] }; models?: RawQuotaResponse['models'] }
+            models = data.payload?.models ?? data.models ?? {}
+            modelsOk = true
+          }
+        } catch {
+          // try next base url
+        }
+      }
+      if (!summaryOk) {
+        try {
+          const res = await this.fetcher(joinUrl(base, QUOTA_SUMMARY_PATH), { method: 'POST', headers, body: JSON.stringify({ project: projectId }), signal: ctx.signal })
+          if (res.ok) {
+            quotaSummary = (await res.json()) as RawQuotaResponse['quotaSummary']
+            summaryOk = true
+          }
+        } catch {
+          // try next base url
+        }
+      }
+      if (modelsOk && summaryOk) break
+    }
+
+    if (!modelsOk && !summaryOk) {
+      throw new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Could not fetch Antigravity quota.', retryable: true })
+    }
+    return { models, quotaSummary }
   }
 
   private baseUrlsToTry(ctx: ProviderContext): string[] {
