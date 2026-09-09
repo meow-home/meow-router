@@ -1290,24 +1290,24 @@ git commit -m "feat(renderer): add Codex provider selector to OAuth accounts vie
 **Interfaces:**
 - Consumes: all produced by Tasks 1–8.
 
-- [ ] **Step 1: Update `docs/ARCHITECTURE.md`**
+- [x] **Step 1: Update `docs/ARCHITECTURE.md`**
 
 Add a short section under provider adapters describing `provider-codex` (PKCE OAuth via `auth.openai.com`, responses+fallback, no client_secret, id_token identity). Reference that the OAuth client `clientId` is a public PKCE identifier (non-secret).
 
-- [ ] **Step 2: Update `docs/API.md`**
+- [x] **Step 2: Update `docs/API.md`**
 
 Note that a `codex` provider type is available for OAuth sign-in and that chat is routed through the Responses API (`/v1/responses`) with chat-completions fallback.
 
-- [ ] **Step 3: Update `docs/DEVELOPMENT_PLAN.md`**
+- [x] **Step 3: Update `docs/DEVELOPMENT_PLAN.md`**
 
 Append a line under Phase 2 listing `provider-codex` (PKCE OAuth, Responses API) as an implemented provider.
 
-- [ ] **Step 4: Run the full gate**
+- [x] **Step 4: Run the full gate**
 
 Run (repo root): `pnpm install && pnpm typecheck && pnpm lint && pnpm test`
 Expected: all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/

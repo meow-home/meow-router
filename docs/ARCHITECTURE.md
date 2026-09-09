@@ -105,6 +105,8 @@ packages/
   provider-core/
   provider-openai/
   provider-deepseek/
+  provider-codex/
+  provider-antigravity/
   provider-anthropic/
   provider-gemini/
   provider-zhipu/
@@ -127,6 +129,15 @@ interface ProviderAdapter {
 ```
 
 The adapter converts provider-specific protocols into normalized internal structures.
+
+### OAuth-backed providers
+
+`provider-codex` authenticates through PKCE OAuth against `auth.openai.com`
+(no `client_secret` — the `clientId` is a public PKCE identifier, not a
+secret). Identity is derived from the `id_token` JWT returned by the token
+endpoint. Chat requests are routed through the OpenAI Responses API
+(`/v1/responses`) with a fallback to `/v1/chat/completions`. Tokens are stored
+in the OS secure credential store and never reach the renderer.
 
 ## 5. Internal request pipeline
 

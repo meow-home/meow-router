@@ -226,11 +226,11 @@ and are re-exported as `@shared/ipc`. The preload exposes a single
 `window.meowGateway` object matching the `WindowApi` interface. All IPC payloads are schema-validated;
 only non-sensitive data crosses this boundary (credentials never do).
 
-### OAuth-authenticated providers (Antigravity)
+### OAuth-authenticated providers (Antigravity, Codex)
 
-The Antigravity provider (and any future OAuth-backed provider) does **not**
-take an API key. It is signed in through the desktop **OAuth Accounts** view,
-which runs a local loopback OAuth flow:
+OAuth-backed providers (Antigravity, Codex) do **not** take an API key. They
+are signed in through the desktop **OAuth Accounts** view, which runs a local
+loopback OAuth flow:
 
 - `oauthStartLogin(type)` opens the system browser against the provider's
   authorization URL and starts a local callback server on `127.0.0.1`.
@@ -243,8 +243,13 @@ which runs a local loopback OAuth flow:
 - `oauthLogout(providerId)` revokes and removes the account.
 
 From the gateway's perspective an OAuth provider behaves like any other: the
-gateway reads `provider:<id>` and dispatches through the Antigravity adapter,
-which auto-refreshes the access token near expiry and resolves the Antigravity
+gateway reads `provider:<id>` and dispatches through the provider adapter,
+which auto-refreshes the access token near expiry.
+
+The **Codex** provider (`type: 'codex'`) uses PKCE OAuth against
+`auth.openai.com` (no `client_secret`; identity from the `id_token` JWT).
+Chat is routed through the OpenAI Responses API (`/v1/responses`) with a
+fallback to `/v1/chat/completions`. The Antigravity adapter resolves its
 project id lazily on first use.
 
 ### Channels

@@ -46,6 +46,7 @@ Tasks:
 - T203 OpenAI-compatible adapter
 - T204 DeepSeek adapter
 - T205 model discovery UI
+- T206 `provider-codex` (PKCE OAuth via `auth.openai.com`, Responses API with chat-completions fallback)
 
 Exit criteria:
 
