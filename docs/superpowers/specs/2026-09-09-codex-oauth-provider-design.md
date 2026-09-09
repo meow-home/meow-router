@@ -35,7 +35,7 @@ packages/
   provider-codex/           (MỚI)
     src/
       metadata.ts           CODEX_OAUTH_CLIENT (public client, không secret), baseUrl, identity header
-      pkceClient.ts         CodexTokenClient: exchangeCode(code, pkcePair, redirectUri) / refresh
+      pkceClient.ts         CodexTokenClient: exchangeCode(code, redirectUri, pkcePair?) / refresh
       userIdentity.ts       decode id_token JWT → email/userId (Codex không có userInfoUrl)
       adapter.ts            CodexAdapter: ProviderAdapter (chat, models, validate)
       index.ts
@@ -64,6 +64,7 @@ export const CODEX_OAUTH_CLIENT: OAuthClientConfig = {
   authUrl: 'https://auth.openai.com/oauth/authorize',
   tokenUrl: 'https://auth.openai.com/oauth/token',
   userInfoUrl: undefined,                  // Codex KHÔNG có endpoint userinfo → decode id_token
+  pkce: true,                              // public client (không secret) → RFC 7636 bắt buộc
   scopes: [
     'openid', 'profile', 'email', 'offline_access',
     'api.connectors.read', 'api.connectors.invoke'
@@ -89,6 +90,8 @@ export function generatePkcePair(): PkcePair
 ```
 
 ### src/oauthFlow.ts (sửa)
+- `OAuthClientConfig` thêm `pkce?: boolean` (RFC 7636).
+- `OAuthLoginService.startLogin` truyền `pkce: config.pkce` vào `prepareAuth` (nếu không, authorize URL thiếu `code_challenge` → exchange fail).
 - `OAuthFlowOptions` thêm `pkce?: boolean`.
 - Khi `pkce: true`:
   - sinh `PkcePair`, thêm `code_challenge` + `code_challenge_method=S256` vào auth URL query.
@@ -102,7 +105,7 @@ export function generatePkcePair(): PkcePair
 
 ### tokenClient.ts — CodexTokenClient
 HTTP thuần, injectable `Fetcher` (mẫu `oauth-core/tokenClient.ts`).
-- `exchangeCode(code, pkcePair, redirectUri)` → POST tokenUrl `grant_type=authorization_code`, body form: `client_id, code, redirect_uri, code_verifier` → `OAuthTokenPair`.
+- `exchangeCode(code, redirectUri, pkcePair?)` → POST tokenUrl `grant_type=authorization_code`, body form: `client_id, code, redirect_uri, code_verifier` → `OAuthTokenPair`. `pkcePair` là tùy chọn: nếu không truyền, client tự sinh một cặp PKCE (public client không có `client_secret`). Thứ tự tham số giữ `(code, redirectUri)` làm tiền tố giống `OAuthTokenClient` để `OAuthLoginService` dùng chung một interface cho cả hai client.
 - `refreshAccessToken(refreshToken)` → POST tokenUrl `grant_type=refresh_token`, body: `client_id, refresh_token` → `OAuthTokenPair`.
 - Parse `access_token`, `refresh_token`, `expires_in`, `id_token`, `scope` (giống `parseTokenPair` của oauth-core). Error mapping: 400 → `invalid_grant`, khác → network/server.
 - Mã hoá form bằng `URLSearchParams`.

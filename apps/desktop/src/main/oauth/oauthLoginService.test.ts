@@ -88,6 +88,34 @@ describe('OAuthLoginService', () => {
     expect(store.peek('provider:PROV_X')!.accessToken).toBe('AT')
   })
 
+  it('completeLoginFor decodes id_token for providers without a userinfo endpoint', async () => {
+    function b64url(o: unknown): string { return Buffer.from(JSON.stringify(o)).toString('base64url') }
+    const idToken = `${b64url({ alg: 'none' })}.${b64url({ email: 'codex@x.com', sub: 's1', name: 'Codex User' })}.sig`
+    const store = memStore()
+    const created: string[] = []
+    const providerService = {
+      create: (input: { type: string; display_name: string }) => ({ id: 'P1', type: input.type, display_name: input.display_name, enabled: true, base_url: null, created_at: '', updated_at: '' }),
+      setCredential: async (id: string, secret: string) => { created.push(id); void secret },
+      delete: async () => true,
+      listWithCredential: async () => []
+    } as unknown as ProviderService
+    const noUserinfo = { ...OAUTH_CLIENT, userInfoUrl: undefined }
+    const client = {
+      exchangeCode: async () => ({ accessToken: 'AT', refreshToken: 'RT', tokenType: 'Bearer', expiresInSec: 3600, idToken }),
+      refreshAccessToken: async () => { throw new Error('n/a') },
+      getUserInfo: async () => { throw new Error('should not be called') }
+    }
+    const svc = new OAuthLoginService({
+      providerService,
+      tokenStore: store,
+      clientForType: () => noUserinfo,
+      tokenClientForType: () => client as never
+    })
+    const meta = await svc.completeLoginFor('codex', makeServer())
+    expect(meta.email).toBe('codex@x.com')
+    expect(meta.displayName).toBe('Codex User')
+  })
+
   it('logoutAccount deletes the credential and provider', async () => {
     let deletedProvider = false
     const store = memStore({ 'provider:PROV_X': { accessToken: 'AT', refreshToken: 'RT', tokenType: 'Bearer', expiresAt: 0 } })

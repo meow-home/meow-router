@@ -33,6 +33,7 @@ export const CODEX_OAUTH_CLIENT: OAuthClientConfig = {
   authUrl: 'https://auth.openai.com/oauth/authorize',
   tokenUrl: 'https://auth.openai.com/oauth/token',
   userInfoUrl: undefined, // Codex has no userinfo endpoint; decode id_token instead
+  pkce: true, // public client (no client_secret) → RFC 7636 required
   scopes: [
     'openid', 'profile', 'email', 'offline_access',
     'api.connectors.read', 'api.connectors.invoke'

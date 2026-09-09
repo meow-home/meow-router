@@ -36,7 +36,8 @@ const KNOWN_METADATA: Record<string, ProviderTypeDescriptor> = {
   opencode: { id: 'opencode', displayName: 'opencode Zen', defaultBaseUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' },
   groq: { id: 'groq', displayName: 'Groq', defaultBaseUrl: 'https://api.groq.com/openai/v1', authType: 'bearer' },
   ollama: { id: 'ollama', displayName: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434/v1', authType: 'bearer' },
-  lmstudio: { id: 'lmstudio', displayName: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234/v1', authType: 'bearer' }
+  lmstudio: { id: 'lmstudio', displayName: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234/v1', authType: 'bearer' },
+  codex: { id: 'codex', displayName: 'Codex (OpenAI)', defaultBaseUrl: 'https://api.openai.com', authType: 'oauth' }
 }
 
 export class ProviderService {

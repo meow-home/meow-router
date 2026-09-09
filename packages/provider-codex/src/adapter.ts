@@ -1,9 +1,10 @@
 import {
   type ProviderAdapter,
   type ProviderContext,
-  type ChatRequest,
+  type NormalizedChatRequest,
   type NormalizedChatChunk,
   type ModelInfo,
+  type CredentialCheckResult,
   ProviderError
 } from '@meow-gateway/provider-core'
 import { type Fetcher, defaultFetcher } from '@meow-gateway/oauth-core'
@@ -38,7 +39,7 @@ export function createCodexAdapter(
 
   const tryResponsesApi = async function* (
     ctx: ProviderContext,
-    req: ChatRequest,
+    req: NormalizedChatRequest,
     headers: Record<string, string>
   ): AsyncGenerator<NormalizedChatChunk> {
     const res = await fetcher(`${ctx.baseUrl}/v1/responses`, {
@@ -48,7 +49,8 @@ export function createCodexAdapter(
         model: req.model,
         messages: req.messages,
         stream: req.stream
-      })
+      }),
+      signal: ctx.signal
     })
     if (res.status === 404) throw new ProviderError({ type: 'MODEL_NOT_FOUND', message: 'Responses API not found' })
     if (res.status === 401) throw new ProviderError({ type: 'AUTH_ERROR', message: 'Unauthorized' })
@@ -57,8 +59,8 @@ export function createCodexAdapter(
     if (!req.stream) {
       const json = await res.json() as any
       const content = json.output ?? ''
-      yield { kind: 'content_delta', content }
-      yield { kind: 'finish', content, usage: mapUsage(json.usage), finishReason: 'stop' }
+      yield { id: 'x', kind: 'content_delta', delta: content }
+      yield { id: 'x', kind: 'finish', usage: mapUsage(json.usage), finishReason: 'stop' }
       return
     }
 
@@ -80,18 +82,18 @@ export function createCodexAdapter(
         try {
           const json = JSON.parse(data)
           if (json.type === 'response.output_text.delta') {
-            yield { kind: 'content_delta', content: json.delta }
+            yield { id: 'x', kind: 'content_delta', delta: json.delta }
           } else if (json.type === 'response.completed') {
-            yield { kind: 'finish', usage: mapUsage(json.response?.usage), finishReason: 'stop' }
+            yield { id: 'x', kind: 'finish', usage: mapUsage(json.response?.usage), finishReason: 'stop' }
           }
-        } catch {}
+        } catch { /* ignore malformed SSE */ }
       }
     }
   }
 
   const tryChatCompletionsApi = async function* (
     ctx: ProviderContext,
-    req: ChatRequest,
+    req: NormalizedChatRequest,
     headers: Record<string, string>
   ): AsyncGenerator<NormalizedChatChunk> {
     const res = await fetcher(`${ctx.baseUrl}/v1/chat/completions`, {
@@ -101,7 +103,8 @@ export function createCodexAdapter(
         model: req.model,
         messages: req.messages,
         stream: req.stream
-      })
+      }),
+      signal: ctx.signal
     })
     if (res.status === 401) throw new ProviderError({ type: 'AUTH_ERROR', message: 'Unauthorized' })
     if (!res.ok) throw new ProviderError({ type: 'INTERNAL_ERROR', message: `Chat completions failed: ${res.status}`, status: res.status })
@@ -109,8 +112,8 @@ export function createCodexAdapter(
     if (!req.stream) {
       const json = await res.json() as any
       const content = json.choices?.[0]?.message?.content ?? ''
-      yield { kind: 'content_delta', content }
-      yield { kind: 'finish', content, usage: mapUsage(json.usage), finishReason: json.choices?.[0]?.finish_reason ?? 'stop' }
+      yield { id: 'x', kind: 'content_delta', delta: content }
+      yield { id: 'x', kind: 'finish', usage: mapUsage(json.usage), finishReason: json.choices?.[0]?.finish_reason ?? 'stop' }
       return
     }
 
@@ -132,11 +135,11 @@ export function createCodexAdapter(
         try {
           const json = JSON.parse(data)
           const delta = json.choices?.[0]?.delta?.content
-          if (delta) yield { kind: 'content_delta', content: delta }
+          if (delta) yield { id: 'x', kind: 'content_delta', delta }
           if (json.choices?.[0]?.finish_reason) {
-            yield { kind: 'finish', usage: mapUsage(json.usage), finishReason: json.choices[0].finish_reason }
+            yield { id: 'x', kind: 'finish', usage: mapUsage(json.usage), finishReason: json.choices[0].finish_reason }
           }
-        } catch {}
+        } catch { /* ignore malformed SSE */ }
       }
     }
   }
@@ -145,7 +148,8 @@ export function createCodexAdapter(
     id,
     async getModels(ctx: ProviderContext): Promise<ModelInfo[]> {
       const res = await fetcher(`${ctx.baseUrl}/v1/models`, {
-        headers: { Authorization: `Bearer ${ctx.credential}` }
+        headers: { Authorization: `Bearer ${ctx.credential}` },
+        signal: ctx.signal
       })
       if (!res.ok) return []
       const json = await res.json() as { data: { id: string; object: string }[] }
@@ -157,29 +161,35 @@ export function createCodexAdapter(
       }))
     },
 
-    async validateCredentials(ctx: ProviderContext): Promise<void> {
-      if (!ctx.credential) {
-        if (!tokenManager) throw new ProviderError({ type: 'AUTH_ERROR', message: 'No credential provided and no tokenManager available.' })
-        try {
+    async validateCredentials(ctx: ProviderContext): Promise<CredentialCheckResult> {
+      try {
+        if (!ctx.credential) {
+          if (!tokenManager) throw new ProviderError({ type: 'AUTH_ERROR', message: 'No credential provided and no tokenManager available.' })
           const token = await tokenManager.getAccessToken(ctx.credentialRef)
           const res = await fetcher(`${ctx.baseUrl}/v1/models`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            signal: ctx.signal
           })
           if (res.status === 401) throw new ProviderError({ type: 'AUTH_ERROR', message: 'Unauthorized' })
           if (!res.ok) throw new ProviderError({ type: 'INTERNAL_ERROR', message: `Validation failed: ${res.status}`, status: res.status })
-        } catch (e) {
-          throw new ProviderError({ type: 'AUTH_ERROR', message: `Auth validation failed: ${e instanceof Error ? e.message : 'Unknown error'}` })
+        } else {
+          const res = await fetcher(`${ctx.baseUrl}/v1/models`, {
+            headers: { Authorization: `Bearer ${ctx.credential}` },
+            signal: ctx.signal
+          })
+          if (res.status === 401) throw new ProviderError({ type: 'AUTH_ERROR', message: 'Unauthorized' })
+          if (!res.ok) throw new ProviderError({ type: 'INTERNAL_ERROR', message: `Validation failed: ${res.status}`, status: res.status })
         }
-      } else {
-        const res = await fetcher(`${ctx.baseUrl}/v1/models`, {
-          headers: { Authorization: `Bearer ${ctx.credential}` }
-        })
-        if (res.status === 401) throw new ProviderError({ type: 'AUTH_ERROR', message: 'Unauthorized' })
-        if (!res.ok) throw new ProviderError({ type: 'INTERNAL_ERROR', message: `Validation failed: ${res.status}`, status: res.status })
+        return { ok: true, message: 'Codex credentials valid.' }
+      } catch (e) {
+        if (e instanceof ProviderError) {
+          return { ok: false, message: e.message }
+        }
+        return { ok: false, message: e instanceof Error ? e.message : 'Validation failed.' }
       }
     },
 
-    async *chat(ctx: ProviderContext, req: ChatRequest): AsyncGenerator<NormalizedChatChunk> {
+    async *chat(ctx: ProviderContext, req: NormalizedChatRequest): AsyncGenerator<NormalizedChatChunk> {
       const headers: Record<string, string> = {
         'Authorization': `Bearer ${ctx.credential}`,
         'originator': CODEX_ORIGINATOR_HEADER

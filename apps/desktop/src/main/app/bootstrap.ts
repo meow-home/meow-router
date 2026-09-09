@@ -25,10 +25,11 @@ import { ProviderRegistry, ProviderError, type CredentialCheckResult } from '@me
 import { createOpenAICompatibleAdapter } from '@meow-gateway/provider-openai'
 import { createDeepSeekAdapter } from '@meow-gateway/provider-deepseek'
 import { createAntigravityAdapter } from '@meow-gateway/provider-antigravity'
+import { createCodexAdapter, CODEX_OAUTH_CLIENT, CodexTokenClient } from '@meow-gateway/provider-codex'
 import { SecureOAuthTokenStore } from '../oauth/oauthTokenStore'
 import { OAuthLoginService } from '../oauth/oauthLoginService'
 import { OAUTH_CLIENT_FOR_TYPE, clientForType } from '../oauth/antigravityConfig'
-import { OAuthTokenManager } from '@meow-gateway/oauth-core'
+import { OAuthTokenManager, OAuthTokenClient } from '@meow-gateway/oauth-core'
 import { QuotaService } from '../quota/quotaService'
 import type { OAuthAccountMeta, OAuthLoginStart, AntigravityQuotaData } from '../../shared/ipc'
 import { createGatewayServer, DEFAULT_HOST, DEFAULT_PORT, type GatewayServer } from '../gateway/server'
@@ -104,7 +105,11 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   const oauthLogin = new OAuthLoginService({
     providerService,
     tokenStore: oauthTokenStore,
-    clientForType
+    clientForType,
+    tokenClientForType: (type) => {
+      if (type === 'codex') return new CodexTokenClient(OAUTH_CLIENT_FOR_TYPE['codex'])
+      return new OAuthTokenClient(clientForType(type))
+    }
   })
 
   // OAuth-backed adapters must be given an OAuthTokenManager so they refresh
@@ -119,6 +124,13 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   })
   const antigravityAdapter = createAntigravityAdapter('antigravity', { tokenManager: oauthManager })
   registry.register(antigravityAdapter)
+
+  const codexManager = new OAuthTokenManager({
+    config: CODEX_OAUTH_CLIENT,
+    store: oauthTokenStore,
+    client: new CodexTokenClient(CODEX_OAUTH_CLIENT)
+  })
+  registry.register(createCodexAdapter('codex', { tokenManager: codexManager }))
 
   // QuotaService polls the Antigravity quota endpoints on an interval and
   // caches the parsed results for the renderer. It is wired to the same

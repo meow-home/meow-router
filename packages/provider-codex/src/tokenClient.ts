@@ -3,7 +3,8 @@ import {
   defaultFetcher,
   type OAuthClientConfig,
   type OAuthTokenPair,
-  type PkcePair
+  type PkcePair,
+  generatePkcePair
 } from '@meow-gateway/oauth-core'
 
 export class CodexTokenClientError extends Error {
@@ -61,13 +62,17 @@ export class CodexTokenClient {
     }
   }
 
-  async exchangeCode(code: string, pkcePair: PkcePair, redirectUri: string): Promise<OAuthTokenPair> {
+  async exchangeCode(code: string, redirectUri: string, pkcePair?: PkcePair): Promise<OAuthTokenPair> {
+    // PKCE is required for this public client (no client_secret). If the caller
+    // did not supply a pair (e.g. a non-PKCE login path), generate one on the
+    // fly so the exchange still carries a code_verifier.
+    const pair = pkcePair ?? generatePkcePair()
     return this.postForm({
       client_id: this.config.clientId,
       code,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
-      code_verifier: pkcePair.codeVerifier
+      code_verifier: pair.codeVerifier
     })
   }
 

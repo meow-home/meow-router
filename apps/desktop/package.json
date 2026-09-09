@@ -67,6 +67,7 @@
     "@meow-gateway/provider-deepseek": "workspace:^",
     "@meow-gateway/provider-openai": "workspace:^",
     "@meow-gateway/provider-antigravity": "workspace:^",
+    "@meow-gateway/provider-codex": "workspace:^",
     "@meow-gateway/oauth-core": "workspace:^",
     "electron-store": "^8.2.0",
     "pino": "^9.0.0",

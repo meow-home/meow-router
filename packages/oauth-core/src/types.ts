@@ -16,6 +16,8 @@ export interface OAuthClientConfig {
   tokenUrl: string
   userInfoUrl?: string
   scopes: string[]
+  /** RFC 7636 PKCE. Required for public clients (no client_secret). */
+  pkce?: boolean
 }
 
 export interface OAuthUserInfo {

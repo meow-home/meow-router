@@ -19,7 +19,7 @@ describe('CodexTokenClient', () => {
       }
     }
     const client = new CodexTokenClient(CODEX_OAUTH_CLIENT, fetcher)
-    const pair = await client.exchangeCode('CODE', PAIR, REDIRECT)
+    const pair = await client.exchangeCode('CODE', REDIRECT, PAIR)
     expect(captured.grant_type).toBe('authorization_code')
     expect(captured.code).toBe('CODE')
     expect(captured.redirect_uri).toBe(REDIRECT)
@@ -50,6 +50,6 @@ describe('CodexTokenClient', () => {
   it('maps a 400 to an invalid_grant error', async () => {
     const fetcher: Fetcher = async () => ({ ok: false, status: 400, headers: { get: () => '' }, text: async () => '{}', json: async () => ({}) })
     const client = new CodexTokenClient(CODEX_OAUTH_CLIENT, fetcher)
-    await expect(client.exchangeCode('C', PAIR, REDIRECT)).rejects.toMatchObject({ kind: 'invalid_grant', status: 400 })
+    await expect(client.exchangeCode('C', REDIRECT, PAIR)).rejects.toMatchObject({ kind: 'invalid_grant', status: 400 })
   })
 })

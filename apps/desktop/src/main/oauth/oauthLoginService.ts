@@ -1,5 +1,6 @@
 import { shell } from 'electron'
-import { OAuthTokenClient, type OAuthClientConfig, type OAuthTokenBundle, type OAuthTokenStore, prepareAuth, type PreparedAuth } from '@meow-gateway/oauth-core'
+import { OAuthTokenClient, type OAuthClientConfig, type OAuthTokenBundle, type OAuthTokenPair, type OAuthUserInfo, type OAuthTokenStore, type PkcePair, prepareAuth, type PreparedAuth } from '@meow-gateway/oauth-core'
+import { decodeIdToken } from '@meow-gateway/provider-codex'
 import type { ProviderService } from '../provider/providerService'
 
 export interface OAuthAccountMeta {
@@ -15,12 +16,20 @@ export interface OAuthLoginStart {
   redirectUri: string
 }
 
+// Structural surface the login service needs from a token client. Both the
+// classic OAuthTokenClient (with userinfo) and the PKCE CodexTokenClient (no
+// userinfo endpoint) satisfy it; Codex identity comes from the id_token.
+export interface LoginTokenClient {
+  exchangeCode(code: string, redirectUri: string, pkcePair?: PkcePair): Promise<OAuthTokenPair>
+  getUserInfo?(accessToken: string): Promise<OAuthUserInfo>
+}
+
 export interface OAuthLoginServiceDeps {
   providerService: ProviderService
   tokenStore: OAuthTokenStore
   clientForType: (type: string) => OAuthClientConfig
-  /** Optional so tests can inject a fresh OAuthTokenClient. */
-  tokenClientForType?: (type: string) => OAuthTokenClient
+  /** Optional so tests can inject a fresh token client. */
+  tokenClientForType?: (type: string) => LoginTokenClient
 }
 
 function credentialRefFor(providerId: string): string {
@@ -31,7 +40,7 @@ export class OAuthLoginService {
   private readonly providerService: ProviderService
   private readonly tokenStore: OAuthTokenStore
   private readonly clientForType: (type: string) => OAuthClientConfig
-  private readonly tokenClientForType?: (type: string) => OAuthTokenClient
+  private readonly tokenClientForType?: (type: string) => LoginTokenClient
   private pending?: { type: string; prepared: PreparedAuth }
 
   constructor(deps: OAuthLoginServiceDeps) {
@@ -45,7 +54,7 @@ export class OAuthLoginService {
     const config = this.clientForType(type)
     // Starts a local loopback callback server and builds the auth URL. The
     // browser is opened here; the exchange happens in completeLogin.
-    const prepared = await prepareAuth({ config })
+    const prepared = await prepareAuth({ config, pkce: config.pkce })
     this.pending = { type, prepared }
     await shell.openExternal(prepared.url)
     return { pending: true, redirectUri: prepared.redirectUri! }
@@ -63,8 +72,17 @@ export class OAuthLoginService {
     const config = this.clientForType(type)
     const { code } = await prepared.waitForCallback()
     const client = this.tokenClientForType ? this.tokenClientForType(type) : new OAuthTokenClient(config)
-    const pair = await client.exchangeCode(code, prepared.redirectUri!)
-    const user = await client.getUserInfo(pair.accessToken)
+    const pair = await client.exchangeCode(code, prepared.redirectUri!, prepared.pkcePair)
+    // Codex has no userinfo endpoint; account identity comes from the id_token
+    // JWT returned by the token endpoint. Providers that DO expose userinfo
+    // (e.g. Antigravity) keep using it.
+    const user = config.userInfoUrl && client.getUserInfo
+      ? await client.getUserInfo(pair.accessToken)
+      : {
+          email: pair.idToken ? decodeIdToken(pair.idToken).email ?? '' : '',
+          name: pair.idToken ? decodeIdToken(pair.idToken).name : undefined,
+          id: pair.idToken ? decodeIdToken(pair.idToken).sub : undefined
+        }
 
     const displayName = user.name ?? user.email
     const row = this.providerService.create({ type, display_name: displayName })

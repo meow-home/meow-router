@@ -22,6 +22,9 @@ importers:
       '@meow-gateway/provider-antigravity':
         specifier: workspace:^
         version: link:../../packages/provider-antigravity
+      '@meow-gateway/provider-codex':
+        specifier: workspace:^
+        version: link:../../packages/provider-codex
       '@meow-gateway/provider-core':
         specifier: workspace:^
         version: link:../../packages/provider-core
@@ -124,6 +127,34 @@ importers:
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@24.1.3)
 
   packages/provider-antigravity:
+    dependencies:
+      '@meow-gateway/oauth-core':
+        specifier: workspace:*
+        version: link:../oauth-core
+      '@meow-gateway/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.5.0
+        version: 9.39.5
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      eslint:
+        specifier: ^9.5.0
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.0.0
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@24.1.3)
+
+  packages/provider-codex:
     dependencies:
       '@meow-gateway/oauth-core':
         specifier: workspace:*
