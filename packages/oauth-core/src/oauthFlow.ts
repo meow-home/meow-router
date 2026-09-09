@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { OAuthClientConfig, OAuthTokenBundle, OAuthUserInfo } from './types'
 import { OAuthTokenClient } from './tokenClient'
 import { CallbackServer } from './callbackServer'
+import { generatePkcePair, type PkcePair } from './pkce'
 
 export interface OAuthFlowOptions {
   config: OAuthClientConfig
@@ -13,6 +14,8 @@ export interface OAuthFlowOptions {
   previousBundle?: OAuthTokenBundle | null
   /** Whether to skip the local callback server (pure URL building). */
   serverless?: boolean
+  /** RFC 7636 PKCE support. */
+  pkce?: boolean
 }
 
 export interface PreparedAuth {
@@ -22,6 +25,8 @@ export interface PreparedAuth {
   redirectUri?: string
   /** Called by the host after the browser is launched (server must be started first). */
   waitForCallback: () => Promise<{ code: string }>
+  /** PKCE pair generated for this flow. Kept in main-process; never over IPC. */
+  pkcePair?: PkcePair
 }
 
 export interface OAuthCompleted {
@@ -39,7 +44,7 @@ function generateState(): string {
  * URL; the caller owns redirect handling.
  */
 export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAuth> {
-  const { config, extraAuthParams = {}, serverless = false } = options
+  const { config, extraAuthParams = {}, serverless = false, pkce = false } = options
   const state = generateState()
 
   const query = new URLSearchParams({
@@ -53,10 +58,17 @@ export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAu
   })
   for (const [k, v] of Object.entries(extraAuthParams)) query.set(k, v)
 
+  const pkcePair = pkce ? generatePkcePair() : undefined
+  if (pkcePair) {
+    query.set('code_challenge', pkcePair.codeChallenge)
+    query.set('code_challenge_method', 'S256')
+  }
+
   if (serverless) {
     return {
       url: `${config.authUrl}?${query.toString()}`,
       state,
+      pkcePair,
       waitForCallback: async () => {
         throw new Error('serverless auth: no local callback; use a host-managed redirect.')
       }
@@ -70,6 +82,7 @@ export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAu
     url: `${config.authUrl}?${query.toString()}`,
     state,
     redirectUri,
+    pkcePair,
     waitForCallback: async () => {
       try {
         const r = await wait()

@@ -51,6 +51,18 @@ describe('prepareAuth', () => {
     const prepared = await prepareAuth({ config: CONFIG, extraAuthParams: { prompt: 'consent' }, serverless: true })
     expect(new URL(prepared.url).searchParams.get('prompt')).toBe('consent')
   })
+
+  it('adds code_challenge/code_challenge_method=S256 and exposes pkcePair when pkce:true', async () => {
+    vi.stubGlobal('fetch', fakeFetch)
+    const prepared = await prepareAuth({ config: CONFIG, serverless: true, pkce: true })
+    const url = new URL(prepared.url)
+    expect(url.searchParams.get('code_challenge')).toBe(prepared.pkcePair!.codeChallenge)
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(prepared.pkcePair!.codeVerifier).toBeDefined()
+    // no challenge on a non-pkce flow
+    const plain = await prepareAuth({ config: CONFIG, serverless: true })
+    expect(new URL(plain.url).searchParams.get('code_challenge')).toBeNull()
+  })
 })
 
 describe('runAuthFlow', () => {
