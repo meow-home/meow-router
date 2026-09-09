@@ -37,7 +37,11 @@ Object.defineProperty(window, 'meowGateway', {
     startUpdateDownload: vi.fn().mockResolvedValue(undefined),
     getUpdateStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
     openUpdateInstaller: vi.fn().mockResolvedValue(false),
-    onUpdateReady: vi.fn().mockReturnValue(() => {})
+    onUpdateReady: vi.fn().mockReturnValue(() => {}),
+    oauthStartLogin: vi.fn().mockResolvedValue({ pending: true, redirectUri: 'http://localhost:9999/callback' }),
+    oauthCompleteLogin: vi.fn().mockResolvedValue({ providerId: 'ag1', email: 'test@gmail.com', displayName: 'Test User', expiresAt: Date.now() + 3600000, valid: true }),
+    oauthListAccounts: vi.fn().mockResolvedValue([]),
+    oauthLogout: vi.fn().mockResolvedValue(undefined)
   },
   configurable: true
 })

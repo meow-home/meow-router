@@ -415,3 +415,70 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
 }
 .toggle__track.is-on .toggle__thumb { left: 18px; background: #ffffff; }
 .toggle__label { font-size: var(--fs-2); color: var(--text); }
+
+/* ---------- oauth cards ---------- */
+.oauth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-2);
+}
+
+.oauth-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  animation: meow-rise 260ms ease-out both;
+}
+.oauth-card--stale {
+  border-color: rgba(255, 180, 84, 0.4);
+}
+
+.oauth-card-top {
+  display: flex; align-items: center; gap: var(--space-2);
+}
+
+.oauth-avatar {
+  width: 40px; height: 40px; flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-size: 16px; font-weight: var(--fw-bold);
+  color: #ffffff; text-transform: uppercase;
+  line-height: 1; user-select: none;
+}
+
+.oauth-card-info {
+  flex: 1; min-width: 0;
+}
+.oauth-card-info .oauth-name {
+  font-family: var(--font-display); font-size: var(--fs-2);
+  font-weight: var(--fw-semibold); color: var(--text-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.oauth-card-info .oauth-email {
+  font-family: var(--font-mono); font-size: var(--fs-1);
+  color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.oauth-card-actions {
+  display: flex; justify-content: flex-end; gap: var(--space-1);
+}
+
+/* Google-branded sign-in button */
+.google-signin-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: #ffffff; color: #3c4043;
+  border: 1px solid #dadce0; border-radius: var(--radius);
+  padding: 8px 16px;
+  font-family: var(--font-ui); font-size: var(--fs-2); font-weight: var(--fw-medium);
+  cursor: pointer; white-space: nowrap;
+  transition: box-shadow 120ms ease;
+}
+.google-signin-btn:hover { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+.google-signin-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+.google-signin-btn svg { flex-shrink: 0; }
