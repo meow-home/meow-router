@@ -483,6 +483,16 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
 .google-signin-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 .google-signin-btn svg { flex-shrink: 0; }
 
+/* OAuth header actions: provider-type selector + sign-in button */
+.oauth-header-actions { display: flex; align-items: center; gap: var(--space-2); }
+.oauth-type-select {
+  background: var(--bg-panel); color: var(--text-strong);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  padding: 8px 10px; font-family: var(--font-ui); font-size: var(--fs-2);
+  cursor: pointer;
+}
+.oauth-type-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* OAuth quota section */
 /* OAuth quota section */
 .oauth-quota-section {

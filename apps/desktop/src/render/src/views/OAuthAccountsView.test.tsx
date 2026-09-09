@@ -101,6 +101,19 @@ describe('OAuthAccountsView', () => {
     fireEvent.click(await screen.findByRole('button', { name: /sign in with google/i }))
     expect(await screen.findByText('auth failed')).toBeTruthy()
   })
+
+  it('lets the user select Codex and signs in with type codex', async () => {
+    // Reset implementation in case a prior test left oauthStartLogin rejecting.
+    gw.oauthStartLogin.mockResolvedValue({ pending: true, redirectUri: 'http://localhost:9999/callback' })
+    render(<OAuthAccountsView />)
+    const select = await screen.findByRole('combobox')
+    fireEvent.change(select, { target: { value: 'codex' } })
+    // Button label switches to the Codex sign-in label
+    const btn = await screen.findByRole('button', { name: /sign in with codex/i })
+    fireEvent.click(btn)
+    await waitFor(() => expect(gw.oauthStartLogin).toHaveBeenCalledWith('codex'))
+    await waitFor(() => expect(gw.oauthCompleteLogin).toHaveBeenCalledWith('codex'))
+  })
 })
 
 const mockQuotaData = [{

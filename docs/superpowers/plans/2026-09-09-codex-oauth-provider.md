@@ -484,7 +484,7 @@ git commit -m "feat(provider-codex): add OAuth metadata and id_token identity de
 **Interfaces:**
 - Consumes: `OAuthClientConfig`, `OAuthTokenPair`, `Fetcher`, `defaultFetcher`, `PkcePair` from `@meow-gateway/oauth-core`.
 - Produces:
-  - `CodexTokenClient` with `exchangeCode(code: string, pkcePair: PkcePair, redirectUri: string): Promise<OAuthTokenPair>` and `refreshAccessToken(refreshToken: string): Promise<OAuthTokenPair>`.
+  - `CodexTokenClient` with `exchangeCode(code: string, redirectUri: string, pkcePair?: PkcePair): Promise<OAuthTokenPair>` and `refreshAccessToken(refreshToken: string): Promise<OAuthTokenPair>`.
   - Constructor `(config: OAuthClientConfig, fetcher?: Fetcher)`.
   - Reuses `OAuthTokenClientError` semantics: on HTTP failure, an error with `name = 'OAuthTokenClientError'`, `.kind`, `.status`.
 
@@ -513,7 +513,7 @@ describe('CodexTokenClient', () => {
       }
     }
     const client = new CodexTokenClient(CODEX_OAUTH_CLIENT, fetcher)
-    const pair = await client.exchangeCode('CODE', PAIR, REDIRECT)
+    const pair = await client.exchangeCode('CODE', REDIRECT, PAIR)
     expect(captured.grant_type).toBe('authorization_code')
     expect(captured.code).toBe('CODE')
     expect(captured.redirect_uri).toBe(REDIRECT)
@@ -544,7 +544,7 @@ describe('CodexTokenClient', () => {
   it('maps a 400 to an invalid_grant error', async () => {
     const fetcher: Fetcher = async () => ({ ok: false, status: 400, headers: { get: () => '' }, text: async () => '{}', json: async () => ({}) })
     const client = new CodexTokenClient(CODEX_OAUTH_CLIENT, fetcher)
-    await expect(client.exchangeCode('C', PAIR, REDIRECT)).rejects.toMatchObject({ kind: 'invalid_grant', status: 400 })
+    await expect(client.exchangeCode('C', REDIRECT, PAIR)).rejects.toMatchObject({ kind: 'invalid_grant', status: 400 })
   })
 })
 ```
@@ -623,7 +623,7 @@ export class CodexTokenClient {
     }
   }
 
-  async exchangeCode(code: string, pkcePair: PkcePair, redirectUri: string): Promise<OAuthTokenPair> {
+  async exchangeCode(code: string, redirectUri: string, pkcePair?: PkcePair): Promise<OAuthTokenPair> {
     return this.postForm({
       client_id: this.config.clientId,
       code,
@@ -1137,6 +1137,14 @@ const codexMetadata = { id: 'codex', displayName: 'Codex (OpenAI)', defaultBaseU
   codex: { id: codexMetadata.id, displayName: codexMetadata.displayName, defaultBaseUrl: codexMetadata.defaultBaseUrl, authType: codexMetadata.authType },
 ```
 
+- [ ] **Step 4a: Enable PKCE in the login flow**
+
+`OAuthClientConfig` gains `pkce?: boolean` (RFC 7636). `CODEX_OAUTH_CLIENT` sets `pkce: true` (public client, no `client_secret`). `OAuthLoginService.startLogin` must forward it to `prepareAuth`:
+```ts
+const prepared = await prepareAuth({ config, pkce: config.pkce })
+```
+Without this the authorize URL omits `code_challenge`, so the later `exchangeCode` (which generates a fresh `code_verifier`) would not match the server and login would fail.
+
 - [ ] **Step 4: Register the Codex adapter + a Codex token manager in `bootstrap.ts`**
 
 In `apps/desktop/src/main/app/bootstrap.ts`:
@@ -1227,7 +1235,7 @@ git commit -m "feat(desktop): wire codex OAuth client + adapter into main proces
 - Consumes: existing `window.meowGateway.oauthStartLogin(type)` / `oauthCompleteLogin(type)` / `oauthListAccounts(type)` / `oauthLogout`; `OAuthAccountMeta`.
 - Produces: a provider-type selector allowing the user to choose Antigravity or Codex, and a dynamic sign-in button label.
 
-- [ ] **Step 1: Write/extend the failing renderer test**
+- [x] **Step 1: Write/extend the failing renderer test**
 
 In `apps/desktop/src/render/src/views/OAuthAccountsView.test.tsx`, assert that a Codex provider can be selected and signs in with type `'codex'`:
 ```tsx
@@ -1237,12 +1245,12 @@ In `apps/desktop/src/render/src/views/OAuthAccountsView.test.tsx`, assert that a
 ```
 (If the view currently hardcodes `OAUTH_TYPE = 'antigravity'`, the test drives the new selector.)
 
-- [ ] **Step 2: Run the renderer test to verify it fails**
+- [x] **Step 2: Run the renderer test to verify it fails**
 
 Run: `cd apps/desktop && pnpm test`
 Expected: FAIL — selector or 'codex' handling not present.
 
-- [ ] **Step 3: Generalize `OAuthAccountsView.tsx`**
+- [x] **Step 3: Generalize `OAuthAccountsView.tsx`**
 
 Refactor `OAuthAccountsView`:
 - Add a provider-type selector state: `const [type, setType] = useState<'antigravity' | 'codex'>('antigravity')`.
@@ -1254,12 +1262,12 @@ Refactor `OAuthAccountsView`:
 
 Keep styles consistent with existing `oauth-*` classes.
 
-- [ ] **Step 4: Run the renderer tests to verify they pass**
+- [x] **Step 4: Run the renderer tests to verify they pass**
 
 Run: `cd apps/desktop && pnpm test`
 Expected: PASS (new + existing renderer tests).
 
-- [ ] **Step 5: Typecheck + lint**
+- [x] **Step 5: Typecheck + lint**
 
 Run (repo root): `pnpm typecheck && pnpm lint`
 Expected: both exit 0.
@@ -1312,6 +1320,6 @@ git commit -m "docs: document Codex OAuth provider"
 
 - **Spec coverage:** Each spec section maps to a task: PKCE extension (Task 1), tokenManager injection (Task 2), provider-codex scaffold (Task 3), metadata + id_token identity (Task 4), PKCE token client (Task 5), adapter + responses/fallback (Task 6), main wiring (Task 7), UI (Task 8), docs (Task 9). Device-auth, quota, fingerprint, policy, agent identity, sidecar are explicitly out of scope (none implemented). ✓
 - **Placeholder scan:** No "TBD"/"add error handling"/"similar to task N". The adapter test's stale-refresh case was simplified to an offline-safe assertion so no network is touched. ✓
-- **Type consistency:** `generatePkcePair` returns `{ codeVerifier, codeChallenge }` (Task 1) and is passed to `CodexTokenClient.exchangeCode(code, pkcePair, redirectUri)` (Task 5); `prepareAuth({ pkce })` exposes `prepared.pkcePair`. `OAuthTokenManagerOptions.client` accepts a structural refresh-only client (Task 2), which `CodexTokenClient` satisfies (Task 5). `createCodexAdapter` / `CodexAdapterOptions` / `CodexAdapter` names consistent across Tasks 3 & 6. `decodeIdToken`/`DecodedIdToken` consistent across Tasks 4 & 7. ✓
+- **Type consistency:** `generatePkcePair` returns `{ codeVerifier, codeChallenge }` (Task 1) and is passed to `CodexTokenClient.exchangeCode(code, redirectUri, pkcePair?)` (Task 5); `prepareAuth({ pkce })` exposes `prepared.pkcePair`. `OAuthTokenManagerOptions.client` accepts a structural refresh-only client (Task 2), which `CodexTokenClient` satisfies (Task 5). `createCodexAdapter` / `CodexAdapterOptions` / `CodexAdapter` names consistent across Tasks 3 & 6. `decodeIdToken`/`DecodedIdToken` consistent across Tasks 4 & 7. ✓
 - **Known subtlety (documented in Task 6 Step 3):** The adapter object-literal's closures must capture `ctx`, `request`, `accessToken` correctly; the plan's `stream`/`parseSse` helpers should be invoked from inside `chat` with the captured context so `ctx.signal` is available. Implementer should ensure it typechecks.
 - **PKCE for refresh:** Codex refresh uses only `client_id` + `refresh_token` (no secret). The generic `OAuthTokenManager.getAccessToken` calls the injected `CodexTokenClient.refreshAccessToken`, which does exactly that (Task 5). ✓

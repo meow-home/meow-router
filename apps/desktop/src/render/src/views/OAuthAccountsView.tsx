@@ -3,7 +3,12 @@ import type { OAuthAccountMeta, AntigravityQuotaData } from '@shared/ipc'
 import { ViewHeader, Button, Pill, ErrorBanner, EmptyState } from '../components/ui'
 import { QuotaGroup } from '../components/QuotaGroup'
 
-const OAUTH_TYPE = 'antigravity'
+type OAuthProviderType = 'antigravity' | 'codex'
+
+const OAUTH_TYPES: { id: OAuthProviderType; label: string; btn: string }[] = [
+  { id: 'antigravity', label: 'Antigravity', btn: 'Sign in with Google' },
+  { id: 'codex', label: 'Codex (OpenAI)', btn: 'Sign in with Codex' }
+]
 
 /** Inline 18×18 Google "G" logo SVG (4-colour). */
 function GoogleLogo() {
@@ -24,6 +29,7 @@ function avatarInitial(name: string): string {
 
 export function OAuthAccountsView() {
   const [accounts, setAccounts] = useState<OAuthAccountMeta[]>([])
+  const [type, setType] = useState<OAuthProviderType>('antigravity')
   const [loggingIn, setLoggingIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [quotaData, setQuotaData] = useState<Record<string, AntigravityQuotaData>>({})
@@ -31,11 +37,11 @@ export function OAuthAccountsView() {
 
   const refresh = useCallback(async () => {
     try {
-      setAccounts(await window.meowGateway.oauthListAccounts(OAUTH_TYPE))
+      setAccounts(await window.meowGateway.oauthListAccounts(type))
     } catch (e) {
       setError(String(e))
     }
-  }, [])
+  }, [type])
 
   const loadQuota = useCallback(async () => {
     try {
@@ -74,8 +80,8 @@ export function OAuthAccountsView() {
     setLoggingIn(true)
     setError(null)
     try {
-      await window.meowGateway.oauthStartLogin(OAUTH_TYPE)
-      await window.meowGateway.oauthCompleteLogin(OAUTH_TYPE)
+      await window.meowGateway.oauthStartLogin(type)
+      await window.meowGateway.oauthCompleteLogin(type)
       await refresh()
       await loadQuota()
     } catch (e) {
@@ -89,8 +95,8 @@ export function OAuthAccountsView() {
     setLoggingIn(true)
     setError(null)
     try {
-      await window.meowGateway.oauthStartLogin(OAUTH_TYPE)
-      await window.meowGateway.oauthCompleteLogin(OAUTH_TYPE)
+      await window.meowGateway.oauthStartLogin(type)
+      await window.meowGateway.oauthCompleteLogin(type)
       await refresh()
       await loadQuota()
     } catch (e) {
@@ -116,28 +122,42 @@ export function OAuthAccountsView() {
         title="OAuth Connections"
         subtitle="Providers that authenticate with a Google account instead of an API key."
       >
-        <button
-          className="google-signin-btn"
-          onClick={handleSignIn}
-          disabled={loggingIn}
-        >
-          <GoogleLogo />
-          {loggingIn ? 'Waiting for authorisation…' : 'Sign in with Google'}
-        </button>
+        <div className="oauth-header-actions">
+          <select
+            className="oauth-type-select"
+            value={type}
+            onChange={(e) => setType(e.target.value as OAuthProviderType)}
+            aria-label="Provider type"
+          >
+            {OAUTH_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+          <button
+            className="google-signin-btn"
+            onClick={handleSignIn}
+            disabled={loggingIn}
+          >
+            <GoogleLogo />
+            {loggingIn ? 'Waiting for authorisation…' : OAUTH_TYPES.find((t) => t.id === type)!.btn}
+          </button>
+        </div>
       </ViewHeader>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <div className="mt-4">
-        <div className="quota-refresh-row">
-          <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
-            {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
-          </Button>
-        </div>
+        {type === 'antigravity' && (
+          <div className="quota-refresh-row">
+            <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
+              {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
+            </Button>
+          </div>
+        )}
         {accounts.length === 0 && (
           <EmptyState
             title="No connected accounts"
-            hint="Sign in with Google to use Antigravity as a provider."
+            hint="Sign in to use an OAuth-backed provider."
           />
         )}
         <div className="oauth-grid">
@@ -156,7 +176,7 @@ export function OAuthAccountsView() {
                   {a.valid ? 'Connected' : 'Needs re-auth'}
                 </Pill>
               </div>
-              {quotaData[a.providerId] && (
+              {type === 'antigravity' && quotaData[a.providerId] && (
                 <div className="oauth-quota-section">
                   {quotaData[a.providerId].error ? (
                     <div className="oauth-quota-error">{quotaData[a.providerId].error}</div>
