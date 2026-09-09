@@ -14,6 +14,7 @@ export type { NewGatewayConfig, ModelRow, NewModel, VirtualModelRow, GatewayConf
 import type { DashboardTotals, UsagePage } from '../main/database/repositories/usageRepository'
 export type { DashboardTotals, UsagePage } from '../main/database/repositories/usageRepository'
 import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-core'
+import type { QuotaItem } from '@meow-gateway/provider-antigravity'
 
 export interface WindowApi {
   getAppVersion(): Promise<string>
@@ -45,6 +46,8 @@ export interface WindowApi {
   oauthCompleteLogin(type: string): Promise<OAuthAccountMeta>
   oauthListAccounts(type: string): Promise<OAuthAccountMeta[]>
   oauthLogout(providerId: string): Promise<void>
+  quotaList(): Promise<AntigravityQuotaData[]>
+  quotaRefresh(): Promise<AntigravityQuotaData[]>
   ping(): Promise<PingResult>
   listVirtualModels(): Promise<VirtualModelRow[]>
   getVirtualModel(id: string): Promise<VirtualModelRow | null>
@@ -100,6 +103,10 @@ export const IPC_CHANNELS = {
     listAccounts: 'oauth:listAccounts',
     logout: 'oauth:logout'
   },
+  quota: {
+    list: 'quota:list',
+    refresh: 'quota:refresh'
+  },
   virtualModel: {
     list: 'virtual-model:list',
     get: 'virtual-model:get',
@@ -147,6 +154,17 @@ export interface OAuthAccountMeta {
   displayName: string
   expiresAt: number
   valid: boolean
+}
+
+// Quota data for an Antigravity account, as exposed to the renderer. The raw
+// provider response is parsed into a flat list of QuotaItems before crossing
+// the IPC boundary; no credentials or tokens are ever included.
+export interface AntigravityQuotaData {
+  providerId: string
+  items: QuotaItem[]
+  tier: string
+  lastUpdatedAt: number
+  error?: string
 }
 
 export interface ProviderTypeDescriptor {
