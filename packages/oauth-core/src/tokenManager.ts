@@ -11,15 +11,19 @@ export class OAuthRefreshError extends Error {
   }
 }
 
+// Minimal structural surface the manager needs from a token client. Lets a
+// PKCE client (no client_secret) be injected just like the classic client.
+type RefreshClient = Pick<OAuthTokenClient, 'refreshAccessToken'>
+
 export interface OAuthTokenManagerOptions {
   config: OAuthClientConfig
   store: OAuthTokenStore
-  client?: OAuthTokenClient
+  client?: RefreshClient
   refreshGraceSec?: number
 }
 
 export class OAuthTokenManager {
-  private readonly client: OAuthTokenClient
+  private readonly client: RefreshClient
   private readonly refreshGraceMs: number
 
   constructor(private readonly opts: OAuthTokenManagerOptions) {

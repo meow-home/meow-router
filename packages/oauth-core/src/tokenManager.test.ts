@@ -64,4 +64,25 @@ describe('OAuthTokenManager', () => {
     const mgr = new OAuthTokenManager({ config: CONFIG, store })
     await expect(mgr.getAccessToken('r:1')).rejects.toThrow(/expired/i)
   })
+
+  it('refreshes via an injected client that is structurally compatible (PKCE, no secret)', async () => {
+    const store = memoryStore({ 'r:1': { accessToken: 'old', refreshToken: 'rt', tokenType: 'Bearer', expiresAt: Date.now() - 1000 } })
+    const refreshCalls: string[] = []
+    const client = {
+      refreshAccessToken: async (rt: string) => {
+        refreshCalls.push(rt)
+        return { accessToken: 'new', refreshToken: 'rt', tokenType: 'Bearer', expiresInSec: 300 }
+      }
+    }
+    const manager = new OAuthTokenManager({
+      config: { ...CONFIG, clientSecret: '' },
+      store,
+      client: client as any,
+      refreshGraceSec: 0
+    })
+    const token = await manager.getAccessToken('r:1')
+    expect(token).toBe('new')
+    expect(refreshCalls).toEqual(['rt'])
+    expect((await store.get('r:1'))!.accessToken).toBe('new')
+  })
 })
