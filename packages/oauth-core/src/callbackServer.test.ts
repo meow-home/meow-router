@@ -42,4 +42,18 @@ describe('CallbackServer', () => {
     await request(`${redirectUri}?error=access_denied`)
     await expect(waitP).rejects.toMatchObject({ code: 'access_denied' })
   })
+
+  it('binds a fixed port and uses redirectHost in the redirect URI', async () => {
+    const srv = new CallbackServer({
+      state: 'ST',
+      host: '127.0.0.1',
+      redirectHost: 'localhost',
+      port: 1455,
+      callbackPath: '/auth/callback'
+    })
+    const { port, redirectUri } = await srv.start()
+    expect(port).toBe(1455)
+    expect(redirectUri).toBe('http://localhost:1455/auth/callback')
+    await srv.close()
+  })
 })

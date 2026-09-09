@@ -19,6 +19,14 @@ export interface CallbackServerOptions {
   state: string
   /** URL path the callback is expected on, e.g. "/oauth-callback". */
   callbackPath?: string
+  /** Fixed port to bind; defaults to 0 (OS-assigned random port). */
+  port?: number
+  /**
+   * Host used in the redirect_uri sent to the auth server. Defaults to `host`.
+   * Some providers register `localhost` in the redirect URI but the server
+   * binds `127.0.0.1`; set this to `localhost` in that case.
+   */
+  redirectHost?: string
   /** ms before the server self-closes waiting for a callback. */
   timeoutMs?: number
   onErrorHtml?: (err: { code: string; message: string }) => string
@@ -34,14 +42,18 @@ export interface CallbackResult {
 export class CallbackServer {
   private server?: Server
   private readonly host: string
+  private readonly redirectHost: string
   private readonly callbackPath: string
+  private readonly port: number
   private readonly state: string
   private readonly timeoutMs: number
   private readonly onErrorHtml?: (err: { code: string; message: string }) => string
 
   constructor(options: CallbackServerOptions) {
     this.host = options.host ?? '127.0.0.1'
+    this.redirectHost = options.redirectHost ?? this.host
     this.callbackPath = options.callbackPath ?? '/oauth-callback'
+    this.port = options.port ?? 0
     this.state = options.state
     this.timeoutMs = options.timeoutMs ?? 120_000
     this.onErrorHtml = options.onErrorHtml
@@ -74,7 +86,7 @@ export class CallbackServer {
 
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(0, this.host, () => resolve())
+      server.listen(this.port, this.host, () => resolve())
     })
 
     const address = server.address() as AddressInfo
@@ -107,7 +119,7 @@ export class CallbackServer {
       })
 
     this.server = server
-    return { port, redirectUri: `http://${this.host}:${port}${this.callbackPath}`, wait }
+    return { port, redirectUri: `http://${this.redirectHost}:${port}${this.callbackPath}`, wait }
   }
 
   async close(): Promise<void> {

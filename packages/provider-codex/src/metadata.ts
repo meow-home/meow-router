@@ -67,6 +67,15 @@ export const CODEX_OAUTH_CLIENT: OAuthClientConfig = {
   userInfoUrl: undefined, // Codex has no userinfo endpoint; decode id_token instead
   pkce: true, // public client (no client_secret) → RFC 7636 required
   buildAuthUrl: codexBuildAuthUrl,
+  // OpenAI's auth server registers this exact redirect URI for the Codex
+  // desktop client. Must match or the request is rejected with
+  // "Invalid authorize request". Mirrors cockpit-tools OAUTH_CALLBACK_PORT.
+  callback: {
+    host: '127.0.0.1',
+    redirectHost: 'localhost',
+    port: 1455,
+    path: '/auth/callback'
+  },
   scopes: [
     'openid', 'profile', 'email', 'offline_access',
     'api.connectors.read', 'api.connectors.invoke'

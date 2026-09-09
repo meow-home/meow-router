@@ -5,7 +5,7 @@ describe('CODEX_OAUTH_CLIENT.buildAuthUrl', () => {
   it('wraps the raw authorize URL in the hosted desktop-auth endpoint', () => {
     const url = CODEX_OAUTH_CLIENT.buildAuthUrl!({
       clientId: CODEX_OAUTH_CLIENT.clientId,
-      redirectUri: 'http://127.0.0.1:1455/auth/callback',
+      redirectUri: 'http://localhost:1455/auth/callback',
       scope: CODEX_OAUTH_CLIENT.scopes.join(' '),
       state: 'abc123',
       codeChallenge: 'challenge-value'
@@ -19,7 +19,7 @@ describe('CODEX_OAUTH_CLIENT.buildAuthUrl', () => {
     expect(raw.origin + raw.pathname).toBe('https://auth.openai.com/oauth/authorize')
     expect(raw.searchParams.get('client_id')).toBe(CODEX_OAUTH_CLIENT.clientId)
     expect(raw.searchParams.get('response_type')).toBe('code')
-    expect(raw.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:1455/auth/callback')
+    expect(raw.searchParams.get('redirect_uri')).toBe('http://localhost:1455/auth/callback')
     expect(raw.searchParams.get('scope')).toContain('api.connectors.invoke')
     expect(raw.searchParams.get('state')).toBe('abc123')
     expect(raw.searchParams.get('code_challenge')).toBe('challenge-value')
@@ -32,6 +32,15 @@ describe('CODEX_OAUTH_CLIENT.buildAuthUrl', () => {
     expect(raw.searchParams.get('codex_app_version')).toBeTruthy()
     expect(raw.searchParams.get('source_surface_stable_id')).toBeTruthy()
     expect(raw.searchParams.get('codex_origin_stable_id')).toBeTruthy()
+  })
+
+  it('registers the fixed localhost:1455/auth/callback redirect URI', () => {
+    expect(CODEX_OAUTH_CLIENT.callback).toEqual({
+      host: '127.0.0.1',
+      redirectHost: 'localhost',
+      port: 1455,
+      path: '/auth/callback'
+    })
   })
 
   it('omits code_challenge when PKCE is not supplied', () => {

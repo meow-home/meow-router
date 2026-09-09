@@ -34,6 +34,19 @@ export interface OAuthClientConfig {
    * supply their own construction. Falls back to the generic builder.
    */
   buildAuthUrl?: (params: OAuthAuthorizeParams) => string
+  /**
+   * Optional local callback server configuration. Providers whose auth server
+   * registers a fixed redirect URI (e.g. Codex: `http://localhost:1455/auth/callback`)
+   * must set this so the redirect_uri matches exactly; otherwise the auth
+   * server rejects the request.
+   */
+  callback?: {
+    host?: string
+    port?: number
+    path?: string
+    /** Host used in the redirect_uri; defaults to `host`. */
+    redirectHost?: string
+  }
 }
 
 export interface OAuthUserInfo {

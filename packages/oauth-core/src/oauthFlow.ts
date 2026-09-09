@@ -89,7 +89,13 @@ export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAu
     }
   }
 
-  const server = new CallbackServer({ state })
+  const server = new CallbackServer({
+    state,
+    host: config.callback?.host,
+    redirectHost: config.callback?.redirectHost,
+    port: config.callback?.port,
+    callbackPath: config.callback?.path
+  })
   const { redirectUri, wait } = await server.start()
   return {
     url: buildUrl(redirectUri),
