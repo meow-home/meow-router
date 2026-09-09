@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { OAuthAccountMeta } from '@shared/ipc'
+import type { OAuthAccountMeta, AntigravityQuotaData } from '@shared/ipc'
 import { ViewHeader, Button, Pill, ErrorBanner, EmptyState } from '../components/ui'
+import { QuotaBar } from '../components/QuotaBar'
 
 const OAUTH_TYPE = 'antigravity'
 
@@ -25,6 +26,8 @@ export function OAuthAccountsView() {
   const [accounts, setAccounts] = useState<OAuthAccountMeta[]>([])
   const [loggingIn, setLoggingIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [quotaData, setQuotaData] = useState<Record<string, AntigravityQuotaData>>({})
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -34,7 +37,38 @@ export function OAuthAccountsView() {
     }
   }, [])
 
+  const loadQuota = useCallback(async () => {
+    try {
+      const items = await window.meowGateway.quotaList()
+      const map: Record<string, AntigravityQuotaData> = {}
+      for (const item of items) map[item.providerId] = item
+      setQuotaData(map)
+    } catch {
+      // silent — quota is non-critical
+    }
+  }, [])
+
+  const refreshQuota = useCallback(async () => {
+    setQuotaRefreshing(true)
+    try {
+      const items = await window.meowGateway.quotaRefresh()
+      const map: Record<string, AntigravityQuotaData> = {}
+      for (const item of items) map[item.providerId] = item
+      setQuotaData(map)
+    } catch {
+      // silent
+    } finally {
+      setQuotaRefreshing(false)
+    }
+  }, [])
+
   useEffect(() => { refresh() }, [refresh])
+
+  useEffect(() => {
+    loadQuota()
+    const interval = setInterval(loadQuota, 60_000)
+    return () => clearInterval(interval)
+  }, [loadQuota])
 
   async function handleSignIn() {
     setLoggingIn(true)
@@ -43,6 +77,7 @@ export function OAuthAccountsView() {
       await window.meowGateway.oauthStartLogin(OAUTH_TYPE)
       await window.meowGateway.oauthCompleteLogin(OAUTH_TYPE)
       await refresh()
+      await loadQuota()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -57,6 +92,7 @@ export function OAuthAccountsView() {
       await window.meowGateway.oauthStartLogin(OAUTH_TYPE)
       await window.meowGateway.oauthCompleteLogin(OAUTH_TYPE)
       await refresh()
+      await loadQuota()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -88,6 +124,9 @@ export function OAuthAccountsView() {
           <GoogleLogo />
           {loggingIn ? 'Waiting for authorisation…' : 'Sign in with Google'}
         </button>
+        <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
+          {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
+        </Button>
       </ViewHeader>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -115,6 +154,21 @@ export function OAuthAccountsView() {
                   {a.valid ? 'Connected' : 'Needs re-auth'}
                 </Pill>
               </div>
+              {quotaData[a.providerId] && (
+                <div className="oauth-quota-section">
+                  {quotaData[a.providerId].error ? (
+                    <div className="oauth-quota-error">{quotaData[a.providerId].error}</div>
+                  ) : quotaData[a.providerId].items.length === 0 ? (
+                    <div className="oauth-quota-empty">No quota data</div>
+                  ) : (
+                    <div className="oauth-quota-bars">
+                      {quotaData[a.providerId].items.map((item) => (
+                        <QuotaBar key={item.key} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="oauth-card-actions">
                 {!a.valid && (
                   <Button variant="primary" onClick={handleReconnect} disabled={loggingIn}>

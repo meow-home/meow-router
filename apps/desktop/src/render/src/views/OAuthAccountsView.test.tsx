@@ -102,3 +102,62 @@ describe('OAuthAccountsView', () => {
     expect(await screen.findByText('auth failed')).toBeTruthy()
   })
 })
+
+const mockQuotaData = [{
+  providerId: 'ag1',
+  items: [
+    { key: 'claude:5h', label: 'Claude (5h)', percentage: 65, resetTime: '2099-01-01T00:00:00Z' },
+    { key: 'claude:weekly', label: 'Claude (Weekly)', percentage: 40, resetTime: '2099-01-07T00:00:00Z' }
+  ],
+  tier: 'individual',
+  lastUpdatedAt: Date.now()
+}]
+
+describe('OAuthAccountsView quota display', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    gw.oauthListAccounts.mockResolvedValue([validAccount])
+    gw.quotaList.mockResolvedValue([])
+    gw.quotaRefresh.mockResolvedValue([])
+  })
+
+  it('renders quota bars when quotaList returns data for an account', async () => {
+    gw.quotaList.mockResolvedValue(mockQuotaData)
+    render(<OAuthAccountsView />)
+    expect(await screen.findByText('Claude (5h)')).toBeTruthy()
+    expect(screen.getByText('Claude (Weekly)')).toBeTruthy()
+    expect(screen.getByText('65%')).toBeTruthy()
+  })
+
+  it('renders no quota section when quotaList returns empty array', async () => {
+    render(<OAuthAccountsView />)
+    await screen.findByText('Alice Smith')
+    expect(screen.queryByText('Claude (5h)')).toBeNull()
+    expect(screen.queryByText('No quota data')).toBeNull()
+  })
+
+  it('renders error text when quota data has error field', async () => {
+    gw.quotaList.mockResolvedValue([{ providerId: 'ag1', items: [], tier: '', lastUpdatedAt: Date.now(), error: 'quota fetch failed' }])
+    render(<OAuthAccountsView />)
+    expect(await screen.findByText('quota fetch failed')).toBeTruthy()
+  })
+
+  it('renders No quota data when items empty and no error', async () => {
+    gw.quotaList.mockResolvedValue([{ providerId: 'ag1', items: [], tier: '', lastUpdatedAt: Date.now() }])
+    render(<OAuthAccountsView />)
+    expect(await screen.findByText('No quota data')).toBeTruthy()
+  })
+
+  it('Refresh quota button calls quotaRefresh', async () => {
+    render(<OAuthAccountsView />)
+    fireEvent.click(await screen.findByRole('button', { name: /refresh quota/i }))
+    await waitFor(() => expect(gw.quotaRefresh).toHaveBeenCalled())
+  })
+
+  it('Refresh quota button shows Refreshing quota… while loading', async () => {
+    gw.quotaRefresh.mockReturnValue(new Promise(() => {}))
+    render(<OAuthAccountsView />)
+    fireEvent.click(await screen.findByRole('button', { name: /refresh quota/i }))
+    expect(await screen.findByText('Refreshing quota…')).toBeTruthy()
+  })
+})

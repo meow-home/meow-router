@@ -482,3 +482,59 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
 .google-signin-btn:hover { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 .google-signin-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 .google-signin-btn svg { flex-shrink: 0; }
+
+/* OAuth quota section */
+.oauth-quota-section {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.oauth-quota-bars { display: flex; flex-direction: column; gap: var(--space-2); }
+.oauth-quota-error { color: var(--danger); font-size: var(--fs-2); }
+.oauth-quota-empty { color: var(--muted); font-size: var(--fs-2); }
+
+/* Quota bar */
+.quota-bar { display: flex; flex-direction: column; gap: 4px; }
+.quota-bar-head { display: flex; justify-content: space-between; align-items: baseline; }
+.quota-bar-label { font-size: var(--fs-2); color: var(--text); }
+.quota-bar-pct { font-size: var(--fs-2); font-weight: var(--fw-medium); }
+.quota-bar-pct--ok { color: var(--ok); }
+.quota-bar-pct--warn { color: var(--warn); }
+.quota-bar-pct--fault { color: var(--danger); }
+.quota-bar-track {
+  height: 6px; border-radius: 999px; background: var(--border);
+  overflow: hidden;
+}
+.quota-bar-fill { height: 100%; border-radius: 999px; transition: width 200ms ease; }
+.quota-bar-fill--ok { background: var(--ok); }
+.quota-bar-fill--warn { background: var(--warn); }
+.quota-bar-fill--fault { background: var(--danger); }
+.quota-bar-meta { font-size: var(--fs-1); color: var(--muted); }
+
+/* OAuth quota section */
+.oauth-quota-section {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+.oauth-quota-bars { display: flex; flex-direction: column; gap: var(--space-2); }
+.oauth-quota-error { color: var(--red); font-size: var(--fs-2); }
+.oauth-quota-empty { color: var(--text-dim); font-size: var(--fs-2); }
+
+/* Quota bar */
+.quota-bar { display: flex; flex-direction: column; gap: 4px; }
+.quota-bar-head { display: flex; justify-content: space-between; align-items: baseline; }
+.quota-bar-label { font-size: var(--fs-2); color: var(--text); }
+.quota-bar-pct { font-size: var(--fs-2); font-weight: var(--fw-medium); }
+.quota-bar-pct--ok { color: var(--green); }
+.quota-bar-pct--warn { color: var(--yellow); }
+.quota-bar-pct--fault { color: var(--red); }
+.quota-bar-track {
+  height: 6px; border-radius: 999px; background: var(--hairline);
+  overflow: hidden;
+}
+.quota-bar-fill { height: 100%; border-radius: 999px; transition: width 200ms ease; }
+.quota-bar-fill--ok { background: var(--green); }
+.quota-bar-fill--warn { background: var(--yellow); }
+.quota-bar-fill--fault { background: var(--red); }
+.quota-bar-meta { font-size: var(--fs-1); color: var(--text-dim); }
