@@ -9,6 +9,15 @@ export interface OAuthTokenBundle {
   projectId?: string           // Antigravity: resolved lazily, cached by the adapter
 }
 
+export interface OAuthAuthorizeParams {
+  clientId: string
+  redirectUri: string
+  scope: string
+  state: string
+  /** Present when PKCE is enabled. */
+  codeChallenge?: string
+}
+
 export interface OAuthClientConfig {
   clientId: string
   clientSecret: string
@@ -18,6 +27,13 @@ export interface OAuthClientConfig {
   scopes: string[]
   /** RFC 7636 PKCE. Required for public clients (no client_secret). */
   pkce?: boolean
+  /**
+   * Optional provider-specific authorize-URL builder. When set it fully
+   * controls the query params (and any URL wrapping) for the authorize URL,
+   * so providers with non-standard endpoints (e.g. Codex's hosted auth) can
+   * supply their own construction. Falls back to the generic builder.
+   */
+  buildAuthUrl?: (params: OAuthAuthorizeParams) => string
 }
 
 export interface OAuthUserInfo {

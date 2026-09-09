@@ -47,26 +47,40 @@ export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAu
   const { config, extraAuthParams = {}, serverless = false, pkce = false } = options
   const state = generateState()
 
-  const query = new URLSearchParams({
-    client_id: config.clientId,
-    response_type: 'code',
-    redirect_uri: '',
-    scope: config.scopes.join(' '),
-    state,
-    access_type: 'offline',
-    include_granted_scopes: 'true'
-  })
-  for (const [k, v] of Object.entries(extraAuthParams)) query.set(k, v)
-
   const pkcePair = pkce ? generatePkcePair() : undefined
-  if (pkcePair) {
-    query.set('code_challenge', pkcePair.codeChallenge)
-    query.set('code_challenge_method', 'S256')
+
+  // Build the authorize URL. A provider-specific builder (e.g. Codex's hosted
+  // auth) fully controls construction; otherwise use the generic builder.
+  const buildUrl = (redirectUri: string): string => {
+    if (config.buildAuthUrl) {
+      return config.buildAuthUrl({
+        clientId: config.clientId,
+        redirectUri,
+        scope: config.scopes.join(' '),
+        state,
+        codeChallenge: pkcePair?.codeChallenge
+      })
+    }
+    const query = new URLSearchParams({
+      client_id: config.clientId,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      scope: config.scopes.join(' '),
+      state,
+      access_type: 'offline',
+      include_granted_scopes: 'true'
+    })
+    for (const [k, v] of Object.entries(extraAuthParams)) query.set(k, v)
+    if (pkcePair) {
+      query.set('code_challenge', pkcePair.codeChallenge)
+      query.set('code_challenge_method', 'S256')
+    }
+    return `${config.authUrl}?${query.toString()}`
   }
 
   if (serverless) {
     return {
-      url: `${config.authUrl}?${query.toString()}`,
+      url: buildUrl(''),
       state,
       pkcePair,
       waitForCallback: async () => {
@@ -77,9 +91,8 @@ export async function prepareAuth(options: OAuthFlowOptions): Promise<PreparedAu
 
   const server = new CallbackServer({ state })
   const { redirectUri, wait } = await server.start()
-  query.set('redirect_uri', redirectUri)
   return {
-    url: `${config.authUrl}?${query.toString()}`,
+    url: buildUrl(redirectUri),
     state,
     redirectUri,
     pkcePair,
