@@ -102,6 +102,16 @@ describe('OAuthAccountsView', () => {
     expect(await screen.findByText('auth failed')).toBeTruthy()
   })
 
+  it('shows a Codex logo (not the Google logo) on the Codex sign-in button', async () => {
+    render(<OAuthAccountsView />)
+    const select = await screen.findByRole('combobox')
+    fireEvent.change(select, { target: { value: 'codex' } })
+    const btn = await screen.findByRole('button', { name: /sign in with codex/i })
+    // The Codex button must carry the Codex logo, not the Google G.
+    expect(btn.querySelector('.codex-logo')).toBeTruthy()
+    expect(btn.querySelector('.google-logo')).toBeNull()
+  })
+
   it('lets the user select Codex and signs in with type codex', async () => {
     // Reset implementation in case a prior test left oauthStartLogin rejecting.
     gw.oauthStartLogin.mockResolvedValue({ pending: true, redirectUri: 'http://localhost:9999/callback' })
