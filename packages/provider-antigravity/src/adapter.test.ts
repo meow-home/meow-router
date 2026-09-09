@@ -126,6 +126,95 @@ describe('AntigravityAdapter', () => {
     expect(body.request.systemInstruction?.parts[0].text).toBe('be helpful')
   })
 
+  it('translates OpenAI tools and tool_choice into Gemini functionDeclarations so the model can call tools', async () => {
+    // Regression: the adapter never forwarded `request.tools`, so the model was
+    // never told about the available tools and never emitted a functionCall.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'what is the weather in SF?' }],
+      tools: [{ type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
+      toolChoice: { type: 'function', function: { name: 'get_weather' } },
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ name: string; description?: string; parameters?: unknown }> }>; toolConfig?: { functionCallingConfig: { mode: string; allowedFunctionNames?: string[] } } }
+    }
+    expect(body.request.tools).toEqual([
+      { functionDeclarations: [{ name: 'get_weather', description: 'Get weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } }] }
+    ])
+    expect(body.request.toolConfig).toEqual({ functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['get_weather'] } })
+  })
+
+  it('strips JSON Schema keywords Gemini does not support from tool parameters', async () => {
+    // Regression: clients send full JSON Schema in `parameters` (e.g. `$schema`,
+    // `exclusiveMinimum`, `additionalProperties`). The Cloud Code Assist API
+    // rejects those with 400 INVALID_ARGUMENT ("Unknown name ... Cannot find
+    // field"). The adapter must keep only the keywords Gemini's Schema accepts.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'get_weather',
+          description: 'Get weather',
+          parameters: {
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              city: { type: 'string', minLength: 1 },
+              temp: { type: 'number', exclusiveMinimum: 0, minimum: 0 }
+            },
+            required: ['city']
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    expect(params).toEqual({
+      type: 'object',
+      properties: {
+        city: { type: 'string', minLength: 1 },
+        temp: { type: 'number', minimum: 0 }
+      },
+      required: ['city']
+    })
+    // Unsupported keywords must be gone.
+    expect('$schema' in params).toBe(false)
+    expect('additionalProperties' in params).toBe(false)
+    const temp = (params.properties as Record<string, Record<string, unknown>>).temp
+    expect('exclusiveMinimum' in temp).toBe(false)
+  })
+
   it('streams every content block and only emits finish on a real finishReason (CRLF-safe)', async () => {
     // Regression: the adapter used to emit a `finish` chunk after EVERY SSE
     // block (because each block carries usageMetadata). The gateway stops on the

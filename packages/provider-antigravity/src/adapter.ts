@@ -14,6 +14,73 @@ function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path
 }
 
+// The Gemini `Schema` accepts only a subset of OpenAPI 3.0 / JSON Schema
+// keywords. Clients (e.g. the AI SDK) send full JSON Schema in `parameters`
+// including `$schema`, `exclusiveMinimum`, `additionalProperties`, etc., which
+// the Cloud Code Assist API rejects with 400 INVALID_ARGUMENT ("Unknown name
+// ... Cannot find field"). We keep only the keywords Gemini understands and
+// recurse into nested schemas (`properties`, `items`, `anyOf`).
+const GEMINI_SCHEMA_KEYS = new Set([
+  'type', 'format', 'title', 'description', 'nullable', 'enum',
+  'maxItems', 'minItems', 'properties', 'required', 'minProperties', 'maxProperties',
+  'minLength', 'maxLength', 'pattern', 'example', 'anyOf', 'propertyOrdering',
+  'default', 'items', 'minimum', 'maximum'
+])
+
+function sanitizeSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeSchema)
+  if (!value || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (!GEMINI_SCHEMA_KEYS.has(k)) continue
+    if (k === 'properties' && v && typeof v === 'object') {
+      const props: Record<string, unknown> = {}
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) props[pk] = sanitizeSchema(pv)
+      out[k] = props
+    } else if (k === 'items' || k === 'anyOf') {
+      out[k] = sanitizeSchema(v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+// Translates OpenAI-format tools (`[{ type: 'function', function: { name,
+// description, parameters } }]`) into the Gemini/Antigravity `functionDeclarations`
+// shape. The Cloud Code Assist API only understands `tools: [{ functionDeclarations:
+// [{ name, description, parameters }] }]`; without it the model is never told
+// about the tools and never emits a functionCall.
+function translateTools(tools: unknown[]): unknown[] {
+  const declarations: unknown[] = []
+  for (const t of tools) {
+    if (!t || typeof t !== 'object') continue
+    const obj = t as { type?: string; function?: { name?: string; description?: string; parameters?: unknown } }
+    const fn = obj.function
+    if (!fn || typeof fn.name !== 'string') continue
+    declarations.push({
+      name: fn.name,
+      ...(fn.description ? { description: fn.description } : {}),
+      ...(fn.parameters ? { parameters: sanitizeSchema(fn.parameters) } : {})
+    })
+  }
+  return declarations.length > 0 ? [{ functionDeclarations: declarations }] : []
+}
+
+// Translates OpenAI `tool_choice` into the Gemini `toolConfig.functionCallingConfig`
+// shape. `auto`/`none` map to the matching mode; a specific function maps to
+// `ANY` with `allowedFunctionNames`.
+function translateToolChoice(toolChoice: unknown): unknown {
+  if (!toolChoice || typeof toolChoice !== 'object') return undefined
+  const tc = toolChoice as { type?: string; function?: { name?: string } }
+  if (tc.type === 'none') return { functionCallingConfig: { mode: 'NONE' } }
+  if (tc.type === 'function' && tc.function?.name) {
+    return { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [tc.function.name] } }
+  }
+  // 'auto' and anything else: let the model decide.
+  return { functionCallingConfig: { mode: 'AUTO' } }
+}
+
 // Maps Gemini/Antigravity finish reasons to the OpenAI-compatible values the
 // gateway exposes. `STOP` -> `stop`, `MAX_TOKENS` -> `length`, tool calls ->
 // `tool_calls`, anything else passes through.
@@ -282,6 +349,8 @@ export class AntigravityAdapter implements ProviderAdapter {
         contents,
         session_id: 'sess_' + randomUUID().slice(0, 8),
         systemInstruction: systemInstruction ?? { parts: [{ text: ANTIGRAVITY_SYSTEM_PROMPT }] },
+        ...(request.tools && request.tools.length > 0 ? { tools: translateTools(request.tools) } : {}),
+        ...(request.toolChoice ? { toolConfig: translateToolChoice(request.toolChoice) } : {}),
         generationConfig: {
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
           ...(request.maxTokens && request.maxTokens > 0 ? { maxOutputTokens: request.maxTokens } : {})

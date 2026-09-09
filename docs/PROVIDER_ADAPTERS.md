@@ -136,6 +136,14 @@ key. Antigravity is the first such provider.
   the signature in the OpenAI tool-call `id` it emits to the client and recovers
   it when the client echoes that id back in an assistant `tool_calls`/tool
   `tool_call_id`, so the round-trip works without any client-side change.
+- **Tool declarations**: OpenAI-format `tools`/`tool_choice` are translated to
+  Gemini `tools: [{ functionDeclarations }]` and `toolConfig.functionCallingConfig`
+  so the model is told about the available tools and can emit `functionCall`
+  parts. Without this the model never calls a tool. The `parameters` JSON Schema
+  is sanitized to the subset of keywords Gemini's `Schema` accepts (clients send
+  full JSON Schema with `$schema`, `exclusiveMinimum`, `additionalProperties`,
+  etc., which the API rejects with `400 INVALID_ARGUMENT` "Unknown name ...
+  Cannot find field").
 - The gateway itself is provider-neutral and treats an OAuth provider like any
   other: it reads the credential at `provider:<id>` and dispatches through the
   adapter, so `gateway/server.ts` requires no special-casing.
