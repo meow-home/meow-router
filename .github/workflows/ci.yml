@@ -31,8 +31,18 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      # Electron's postinstall downloads a ~100 MB binary from GitHub releases,
+      # which intermittently fails on CI with "RequestError: read ECONNRESET".
+      # Retry the whole install so a transient network reset self-heals instead
+      # of failing the job.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 10
+          retry_on: error
+          command: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm typecheck
