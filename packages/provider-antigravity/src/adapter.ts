@@ -308,7 +308,19 @@ export class AntigravityAdapter implements ProviderAdapter {
         if (res.ok) {
           const data = (await res.json()) as { payload?: { models?: Record<string, unknown> }; models?: Record<string, unknown> }
           const map = data.payload?.models ?? data.models ?? {}
-          const ids = Object.keys(map).filter((k) => !k.includes('legacy'))
+          // The fetchAvailableModels response uses quota-tier keys like
+          // gemini-3.1-pro-high or claude-3-5-sonnet-low. These tier
+          // suffixes are NOT accepted by the streamGenerateContent endpoint
+          // (which only accepts base model names such as gemini-2.5-pro).
+          // Strip the known suffixes and deduplicate so that -high/-low
+          // variants of the same model collapse to a single entry.
+          const rawIds = Object.keys(map).filter((k) => !k.includes('legacy'))
+          const seen = new Set()
+          const ids = []
+          for (const raw of rawIds) {
+            const baseId = raw.replace(/-(?:high|low|experimental)$/, '')
+            if (!seen.has(baseId)) { seen.add(baseId); ids.push(baseId) }
+          }
           if (ids.length === 0) break
           return ids.map((id) => ({
             id,

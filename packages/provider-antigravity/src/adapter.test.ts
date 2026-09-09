@@ -583,3 +583,56 @@ describe('AntigravityAdapter.getQuota', () => {
     expect(authHeader).toBe(`Bearer ${AUTH}`)
   })
 })
+
+describe('AntigravityAdapter.getModels', () => {
+  // Use a JSON-parsing fetcher: the shared fetcherFor always returns {} from json()
+  // which would make the models map empty and trigger the fallback path.
+  function modelsFetcher(models: Record<string, unknown>): Fetcher {
+    return async (url, _init) => {
+      const u = String(url)
+      let text = ''
+      let ok = true
+      if (u.includes('fetchAvailableModels')) text = JSON.stringify({ payload: { models } })
+      else if (u.includes('loadCodeAssist')) text = JSON.stringify({ project: { id: 'p' } })
+      else { ok = false }
+      return {
+        ok,
+        status: ok ? 200 : 404,
+        headers: { get: () => 'application/json' },
+        text: async () => text,
+        json: async () => (text ? JSON.parse(text) : {}),
+        body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(text)); c.close() } })
+      } as never
+    }
+  }
+
+  it('strips tier suffixes so base model id is used for inference (regression: gemini-3.1-pro-high -> gemini-3.1-pro)', async () => {
+    const adapter = createAntigravityAdapter('antigravity', { fetcher: modelsFetcher({
+      'gemini-3.1-pro-high': {},
+      'gemini-3.1-pro-low': {},
+      'gemini-2.5-flash': {},
+      'claude-3-5-sonnet-high': {},
+      'some-model-experimental': {},
+    }) })
+    const models = await adapter.getModels(ctx())
+    const ids = models.map((m) => m.providerModelId)
+    expect(ids).toContain('gemini-3.1-pro')
+    expect(ids).not.toContain('gemini-3.1-pro-high')
+    expect(ids).not.toContain('gemini-3.1-pro-low')
+    expect(ids).toContain('gemini-2.5-flash')
+    expect(ids).toContain('claude-3-5-sonnet')
+    expect(ids).not.toContain('claude-3-5-sonnet-high')
+    expect(ids).toContain('some-model')
+    expect(ids).not.toContain('some-model-experimental')
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('falls back to fallbackModels when fetchAvailableModels returns empty map', async () => {
+    const adapter = createAntigravityAdapter('antigravity', {
+      fetcher: modelsFetcher({}),
+      fallbackModels: ['gemini-2.5-pro', 'gemini-2.5-flash']
+    })
+    const models = await adapter.getModels(ctx())
+    expect(models.map((m) => m.id)).toEqual(['gemini-2.5-pro', 'gemini-2.5-flash'])
+  })
+})
