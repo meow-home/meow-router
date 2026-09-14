@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { IPC_CHANNELS, type IpcResult, type PingPayload, type PingResult, type UpdateCheckResult, type UpdateDownloadState, type UpdateDownloadAction } from '../shared/ipc'
 import { bootstrapMeowGatewayApp, type MeowGatewayApp } from './app/bootstrap'
@@ -70,6 +70,18 @@ app.whenReady().then(async () => {
   if (!acquireSingleInstanceLock({ onSecondInstance: showWindow })) {
     return
   }
+
+  
+ipcMain.handle(IPC_CHANNELS.theme.set, (_e, theme: "dark" | "light"): IpcResult<void> => {
+  if (theme === "light") {
+    nativeTheme.themeSource = "light"
+    mainWindow?.setBackgroundColor("#ffffff")
+  } else {
+    nativeTheme.themeSource = "dark"
+    mainWindow?.setBackgroundColor("#0b0e14")
+  }
+  return { ok: true, data: undefined }
+})
 
   ipcMain.handle(IPC_CHANNELS.ping, (_e, payload: PingPayload): PingResult => {
     return { pong: 'pong', echo: payload.from }

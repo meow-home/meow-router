@@ -59,7 +59,7 @@ export function VirtualModelsView() {
       <ViewHeader title="Virtual Models" subtitle="Public IDs your coding agent calls — mapped to a concrete provider model.">
         <Button variant="primary" onClick={handleNew}>
           <Plus size={14} style={{ marginRight: '6px' }} />
-          + New Virtual Model
+          New Virtual Model
         </Button>
       </ViewHeader>
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, Plus, Edit3, Trash2, Cpu, Search, Zap, Wrench, Eye, Brain, Code2 } from 'lucide-react'
+import { RefreshCw, Plus, Edit3, Trash2, Cpu, Search, Zap, Wrench, Eye, Brain, Code2, MoreHorizontal, Power } from 'lucide-react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
-import { ViewHeader, Button, Field, EmptyState, BaseModal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
+import { ViewHeader, Button, Field, EmptyState, BaseModal, BaseDropdown, Select, Input, BaseInput, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -165,6 +165,7 @@ export function ModelsView() {
   const [providerId, setProviderId] = useState<string>('')
   const [models, setModels] = useState<ModelRow[]>([])
   const [searchFilter, setSearchFilter] = useState('')
+  const [capabilityFilter, setCapabilityFilter] = useState<keyof Capabilities | 'all'>('all')
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
@@ -235,7 +236,14 @@ export function ModelsView() {
 
   const editTarget = editTargetId ? models.find((m) => m.id === editTargetId) ?? null : null
 
+  const activeProvider = providers.find((p) => p.id === providerId)
+  const enabledCount = models.filter((m) => m.enabled).length
+  const visionCount = models.filter((m) => parseCapabilities(m.capabilities_json).vision).length
+  const reasoningCount = models.filter((m) => parseCapabilities(m.capabilities_json).reasoning).length
+
   const filteredModels = models.filter((m) => {
+    const caps = parseCapabilities(m.capabilities_json)
+    if (capabilityFilter !== 'all' && !caps[capabilityFilter]) return false
     if (!searchFilter.trim()) return true
     const q = searchFilter.toLowerCase()
     return m.display_name.toLowerCase().includes(q) || m.provider_model_id.toLowerCase().includes(q)
@@ -254,30 +262,87 @@ export function ModelsView() {
         </Button>
       </ViewHeader>
 
-      {/* Control Bar: Provider Filter + Model Search */}
-      <div className="models-control-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-          <span className="field-label" style={{ whiteSpace: 'nowrap', margin: 0 }}>Provider</span>
-          <Select
-            value={providerId}
-            onChange={(v) => { setProviderId(v); refresh(v) }}
-            options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
-            className="provider-filter"
-          />
+      {/* Provider Summary Cards */}
+      {models.length > 0 && (
+        <div className="models-summary-grid">
+          <div className="models-metric-card">
+            <div className="models-metric-header">
+              <span className="models-metric-title">Active Provider</span>
+              <Cpu size={16} className="models-metric-icon" />
+            </div>
+            <div className="models-metric-value" style={{ fontSize: '1.25rem' }}>{activeProvider?.display_name ?? '—'}</div>
+            <div className="models-metric-subtitle">{models.length} registered models</div>
+          </div>
 
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 220, marginLeft: 12 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, color: 'var(--text-dim)' }} />
-            <Input
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Filter models..."
-              style={{ paddingLeft: 32 }}
-            />
+          <div className="models-metric-card">
+            <div className="models-metric-header">
+              <span className="models-metric-title">Routing Status</span>
+              <Power size={16} className="models-metric-icon" style={{ color: 'var(--green)' }} />
+            </div>
+            <div className="models-metric-value">{enabledCount} <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)', fontWeight: 400 }}>/ {models.length}</span></div>
+            <div className="models-metric-subtitle">Active models enabled</div>
+          </div>
+
+          <div className="models-metric-card">
+            <div className="models-metric-header">
+              <span className="models-metric-title">Specialized Models</span>
+              <Brain size={16} className="models-metric-icon" style={{ color: '#c084fc' }} />
+            </div>
+            <div className="models-metric-value">{reasoningCount + visionCount}</div>
+            <div className="models-metric-subtitle">{visionCount} Vision • {reasoningCount} Reasoning</div>
           </div>
         </div>
+      )}
 
-        <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)' }}>
-          {filteredModels.length} models
+      {/* Control Bar: Provider Selector + Search + Capability Filters (All Left-Aligned) */}
+      <div className="models-control-bar">
+        <div className="models-control-row">
+          <div className="models-control-left">
+            <div className="models-provider-select-wrapper">
+              <span className="models-provider-label">Provider</span>
+              <Select
+                value={providerId}
+                onChange={(v) => { setProviderId(v); refresh(v) }}
+                options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
+                style={{ width: 160 }}
+              />
+            </div>
+
+            <BaseInput
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Filter models by name or ID..."
+              leftIcon={<Search size={14} />}
+              clearable
+              onClear={() => setSearchFilter('')}
+              style={{ width: 220 }}
+            />
+
+            <div className="models-capability-filters">
+              <button
+                type="button"
+                className={`capability-chip ${capabilityFilter === 'all' ? 'is-active' : ''}`}
+                onClick={() => setCapabilityFilter('all')}
+              >
+                All
+              </button>
+              {capabilityConfig.map(({ key, label, icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`capability-chip ${capabilityFilter === key ? 'is-active' : ''}`}
+                  onClick={() => setCapabilityFilter(key)}
+                >
+                  {icon}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', flexShrink: 0 }}>
+            {filteredModels.length} models
+          </div>
         </div>
       </div>
 
@@ -293,86 +358,134 @@ export function ModelsView() {
       />
 
       {!showForm && filteredModels.length === 0 && (
-        <EmptyState icon="◇" title="No models found" hint="Run Sync Models or add one manually." />
+        <EmptyState
+          icon="◇"
+          title="No models found"
+          hint={
+            searchFilter || capabilityFilter !== 'all'
+              ? 'No models match the active filter criteria.'
+              : 'Run Sync Models or add one manually.'
+          }
+        >
+          {(searchFilter || capabilityFilter !== 'all') && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearchFilter('')
+                setCapabilityFilter('all')
+              }}
+              style={{ marginTop: 'var(--space-2)' }}
+            >
+              Reset Filters
+            </Button>
+          )}
+        </EmptyState>
       )}
 
       {filteredModels.length > 0 && (
-        <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="table">
+        <div className="panel table-scroll-container" style={{ padding: 0 }}>
+          <table className="table table-compact">
             <thead>
               <tr>
-                <th>Model Name</th>
-                <th>Model ID</th>
-                <th>Context Window</th>
+                <th>Model</th>
+                <th>Context</th>
                 <th>Pricing ($/1M)</th>
                 <th>Capabilities</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th className="col-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredModels.map((m) => {
                 const caps = parseCapabilities(m.capabilities_json)
+                const hasCaps = capabilityConfig.some(({ key }) => caps[key])
+
                 return (
                   <tr key={m.id}>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-                          background: 'var(--accent-dim)', color: 'var(--accent-strong)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                          <Cpu size={15} />
+                      <div className="model-cell-identity">
+                        <Cpu size={15} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />
+                        <div className="model-cell-names">
+                          <span className="model-cell-title">{m.display_name}</span>
+                          <span className="model-cell-sub">{m.provider_model_id}</span>
                         </div>
-                        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-strong)' }}>
-                          {m.display_name}
-                        </span>
                       </div>
                     </td>
-                    <td className="mono" style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-1)' }}>
-                      {m.provider_model_id}
-                    </td>
-                    <td className="mono">
+                    <td className="mono" style={{ whiteSpace: 'nowrap' }}>
                       {m.context_window ? (
-                        <span style={{ background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
-                          {m.context_window.toLocaleString()} tok
+                        <span style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-1)' }}>
+                          {m.context_window >= 1000 ? `${(m.context_window / 1000).toLocaleString()}K tok` : `${m.context_window} tok`}
                         </span>
                       ) : '—'}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <div className="price-chip">
-                        <span>In: ${m.input_price ?? '0'}</span>
+                        <span>In: <span className="price-tag">${m.input_price ?? '0'}</span></span>
                         <span style={{ color: 'var(--text-faint)' }}>/</span>
-                        <span>Out: ${m.output_price ?? '0'}</span>
+                        <span>Out: <span className="price-tag">${m.output_price ?? '0'}</span></span>
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 280 }}>
-                        {capabilityConfig.map(({ key, label, icon }) => (
-                          <span key={key} className={`capability-tag ${caps[key] ? 'is-active' : ''}`}>
-                            {icon}
-                            {label}
-                          </span>
-                        ))}
-                      </div>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {hasCaps ? (
+                        <div className="capability-tags-compact">
+                          {capabilityConfig.map(({ key, label, icon }) => {
+                            if (!caps[key]) return null
+                            return (
+                              <span key={key} className={`capability-tag capability--${key} is-active`} style={{ whiteSpace: 'nowrap' }}>
+                                {icon}
+                                {label}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-faint)' }}>—</span>
+                      )}
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
                         {m.stale && <Pill tone="warn">stale</Pill>}
                         <Pill tone={m.enabled ? 'ok' : 'muted'}>{m.enabled ? 'enabled' : 'disabled'}</Pill>
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <Button onClick={() => handleEdit(m)}>
-                          <Edit3 size={13} style={{ marginRight: '4px' }} />
-                          Edit
-                        </Button>
-                        <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
-                        <Button variant="danger" onClick={() => setDeleting(m)}>
-                          <Trash2 size={13} style={{ marginRight: '4px' }} />
-                          Del
-                        </Button>
+                    <td className="col-actions" style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <BaseDropdown
+                          placement="bottom-end"
+                          trigger={
+                            <Button variant="ghost" title="Actions" aria-label="Actions" style={{ padding: '2px 6px' }}>
+                              <MoreHorizontal size={15} />
+                            </Button>
+                          }
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 130 }}>
+                            <button
+                              type="button"
+                              className="select-option"
+                              onClick={() => handleEdit(m)}
+                            >
+                              <Edit3 size={13} style={{ marginRight: '6px' }} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="select-option"
+                              onClick={() => handleToggle(m)}
+                            >
+                              <Power size={13} style={{ marginRight: '6px' }} />
+                              {m.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button
+                              type="button"
+                              className="select-option"
+                              style={{ color: 'var(--red)' }}
+                              onClick={() => setDeleting(m)}
+                            >
+                              <Trash2 size={13} style={{ marginRight: '6px' }} />
+                              Del
+                            </button>
+                          </div>
+                        </BaseDropdown>
                       </div>
                     </td>
                   </tr>

@@ -20,7 +20,7 @@ describe('EditProviderModal', () => {
 
   it('prefills and disables the type select, calls updateProvider with enabled', async () => {
     render(<EditProviderModal open provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
-    const select = document.querySelector('select') as HTMLSelectElement
+    const select = document.querySelector('.select-trigger') as HTMLButtonElement
     expect(select.disabled).toBe(true)
     expect((screen.getByRole('checkbox', { name: 'Enabled' }) as HTMLInputElement).checked).toBe(true)
     fireEvent.click(document.querySelector('input[type="checkbox"]') as HTMLInputElement)

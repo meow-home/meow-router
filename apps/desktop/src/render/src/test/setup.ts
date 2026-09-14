@@ -2,6 +2,7 @@ import { vi } from 'vitest'
 
 Object.defineProperty(window, 'meowGateway', {
   value: {
+    setTheme: vi.fn().mockResolvedValue(undefined),
     ping: vi.fn().mockResolvedValue({ pong: 'pong', echo: '' }),
     getAppVersion: vi.fn().mockResolvedValue('0.1.0'),
     listProviders: vi.fn().mockResolvedValue([]),

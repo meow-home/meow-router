@@ -50,6 +50,7 @@ describe('ModelsView', () => {
   it('edits a model', async () => {
     gw.updateModel.mockResolvedValue({ id: 'm1', provider_id: 'p1', provider_model_id: 'deepseek-chat-v2', display_name: 'DeepSeek Chat', context_window: 64000, input_price: 0.1, output_price: 0.3, capabilities_json: '{}', enabled: true, discovered_at: '', stale: false })
     render(<ModelsView />)
+    fireEvent.click(await screen.findByLabelText('Actions'))
     fireEvent.click(await screen.findByText('Edit'))
     fireEvent.change(await screen.findByLabelText(/provider model id/i), { target: { value: 'deepseek-chat-v2' } })
     fireEvent.click(await screen.findByText(/Save Model/i))
@@ -59,6 +60,7 @@ describe('ModelsView', () => {
 
   it('requires confirmation before deleting a model', async () => {
     render(<ModelsView />)
+    fireEvent.click(await screen.findByLabelText('Actions'))
     fireEvent.click(await screen.findByText('Del'))
     expect(gw.deleteModel).not.toHaveBeenCalled()
     const dialog = await screen.findByRole('dialog', { name: /Delete model/i })

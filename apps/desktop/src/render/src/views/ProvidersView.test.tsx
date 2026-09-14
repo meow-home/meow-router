@@ -49,7 +49,7 @@ describe('ProvidersView', () => {
     // the edit modal opens
     expect(await screen.findByRole('dialog')).toBeTruthy()
     // type select is disabled in edit mode
-    const select = document.querySelector('.dialog select') as HTMLSelectElement
+    const select = document.querySelector('.dialog .select-trigger') as HTMLButtonElement
     expect(select.disabled).toBe(true)
     // pre-fills the provider's display name
     expect((screen.getByLabelText('Display name') as HTMLInputElement).value).toBe('DeepSeek')

@@ -26,12 +26,12 @@ function renderFields(props: Partial<Parameters<typeof ProviderFields>[0]> = {})
 describe('ProviderFields', () => {
   it('renders type select with options', () => {
     renderFields()
-    expect(screen.getByRole('option', { name: 'OpenAI' })).toBeTruthy()
+    expect(screen.getByRole('combobox')).toBeTruthy()
   })
 
   it('disables type select when typeLocked', () => {
     const { container } = renderFields({ typeLocked: true })
-    expect(container.querySelector('select')?.disabled).toBe(true)
+    expect((container.querySelector('.select-trigger') as HTMLButtonElement)?.disabled).toBe(true)
   })
 
   it('hides enabled checkbox by default (add mode)', () => {

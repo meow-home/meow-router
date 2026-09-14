@@ -40,6 +40,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 const api: WindowApi = {
+  setTheme: (theme: "dark" | "light") => invoke<void>(IPC_CHANNELS.theme.set, theme),
   ping: async () => {
     const payload: PingPayload = { from: 'preload' }
     return ipcRenderer.invoke(IPC_CHANNELS.ping, payload) as Promise<PingResult>

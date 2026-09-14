@@ -3,9 +3,12 @@
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 import { BaseModal } from './common/BaseModal'
 
+import { BaseSelect, type BaseSelectOption, type BaseSelectProps } from './common/BaseSelect'
+
 export { BaseModal } from './common/BaseModal'
 export { BaseDropdown } from './common/BaseDropdown'
-export { BaseSelect } from './common/BaseSelect'
+export { BaseSelect, type BaseSelectOption, type BaseSelectProps } from './common/BaseSelect'
+export { BaseInput, type BaseInputProps } from './common/BaseInput'
 
 export function classNames(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -59,6 +62,7 @@ export function ViewHeader({
 
 export function Button({
   variant = 'default',
+  size = 'md',
   type = 'button',
   onClick,
   disabled,
@@ -66,24 +70,20 @@ export function Button({
   title,
   style,
   className,
-}: {
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'default' | 'primary' | 'live' | 'danger' | 'ghost'
-  type?: 'button' | 'submit'
-  onClick?: () => void
-  disabled?: boolean
-  children: ReactNode
-  title?: string
-  style?: React.CSSProperties
-  className?: string
+  size?: 'sm' | 'md' | 'lg'
 }) {
   return (
     <button
       type={type}
-      className={classNames('btn', variant !== 'default' && `btn--${variant}`, className)}
+      className={classNames('btn', variant !== 'default' && `btn--${variant}`, size !== 'md' && `btn--${size}`, className)}
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={style}
+      {...rest}
     >
       {children}
     </button>
@@ -127,79 +127,28 @@ export function ErrorBanner({ children }: { children: string | null }) {
   return <div className="error-banner" role="alert">{children}</div>
 }
 
-export interface SelectOption {
-  value: string
-  label: string
-  disabled?: boolean
+export type SelectOption = BaseSelectOption
+
+export function Select(props: BaseSelectProps) {
+  return <BaseSelect {...props} />
 }
 
-export function Select({
-  name,
-  value,
-  defaultValue,
-  options,
-  onChange,
-  disabled,
-  required,
-  placeholder,
-  className,
-}: {
-  name?: string
-  value?: string
-  defaultValue?: string
-  options: SelectOption[]
-  onChange?: (value: string) => void
-  disabled?: boolean
-  required?: boolean
-  placeholder?: string
-  className?: string
-}) {
-  const includesPlaceholder = placeholder != null
-
-  // Never set both `value` and `defaultValue`: a controlled select must not also
-  // receive a default, or React warns. We default to `''` only in uncontrolled
-  // mode (no `value`) so a placeholder shows as the initial empty option.
-  const isControlled = value !== undefined
-
-  return (
-    <select
-      className={classNames('input', className)}
-      name={name}
-      value={value}
-      defaultValue={isControlled ? undefined : defaultValue !== undefined ? defaultValue : includesPlaceholder ? '' : undefined}
-      onChange={(e) => onChange?.(e.target.value)}
-      disabled={disabled}
-      required={required}
-      aria-label={placeholder}
-    >
-      {includesPlaceholder && (
-        <option value="" disabled>
-          {placeholder}
-        </option>
-      )}
-      {options.map((o) => (
-        <option key={o.value} value={o.value} disabled={o.disabled}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+  size?: 'sm' | 'md' | 'lg'
   className?: string
 }
 
-export function Input({ className, ...rest }: InputProps) {
-  return <input className={classNames('input', className)} {...rest} />
+export function Input({ size = 'md', className, ...rest }: InputProps) {
+  return <input className={classNames('input', size !== 'md' && `input--${size}`, className)} {...rest} />
 }
 
 export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  size?: 'sm' | 'md' | 'lg'
   className?: string
 }
 
-export function TextArea({ className, ...rest }: TextAreaProps) {
-  return <textarea className={classNames('input', className)} {...rest} />
+export function TextArea({ size = 'md', className, ...rest }: TextAreaProps) {
+  return <textarea className={classNames('input', size !== 'md' && `input--${size}`, className)} {...rest} />
 }
 
 export function Checkbox({
@@ -316,12 +265,13 @@ export function ConfirmDialog({
   )
 }
 
-export function EmptyState({ icon = '—', title, hint }: { icon?: string; title: string; hint?: string }) {
+export function EmptyState({ icon = '—', title, hint, children }: { icon?: string; title: string; hint?: string; children?: ReactNode }) {
   return (
     <div className="empty-state">
       <span className="empty-mark">{icon}</span>
       <span className="empty-state-title">{title}</span>
       {hint && <span className="empty-state-hint">{hint}</span>}
+      {children}
     </div>
   )
 }

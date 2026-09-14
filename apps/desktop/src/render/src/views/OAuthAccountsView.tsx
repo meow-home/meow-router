@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw, LogOut, LogIn, AlertCircle } from 'lucide-react'
 import type { OAuthAccountMeta, AntigravityQuotaData } from '@shared/ipc'
-import { ViewHeader, Button, Pill, ErrorBanner, EmptyState } from '../components/ui'
+import { ViewHeader, Button, Pill, ErrorBanner, EmptyState, Select } from '../components/ui'
 import { QuotaGroup } from '../components/QuotaGroup'
 
 type OAuthProviderType = 'antigravity' | 'codex'
 
 const OAUTH_TYPES: { id: OAuthProviderType; label: string; btn: string }[] = [
-  { id: 'antigravity', label: 'Antigravity', btn: 'Sign in with Google' },
-  { id: 'codex', label: 'Codex (OpenAI)', btn: 'Sign in with Codex' }
+  { id: 'antigravity', label: 'Antigravity (Google)', btn: 'Sign in with Google' },
+  { id: 'codex', label: 'Codex (OpenAI)', btn: 'Sign in with Codex' },
 ]
 
 /** Inline 18×18 Google "G" logo SVG (4-colour). */
@@ -28,11 +29,11 @@ function CodexLogo() {
     <svg className="codex-logo" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2.5a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15Z"
-        fill="#000"
+        fill="currentColor"
       />
       <path
         d="M12 6.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"
-        fill="#000"
+        fill="currentColor"
       />
     </svg>
   )
@@ -136,19 +137,17 @@ export function OAuthAccountsView() {
     <div className="view">
       <ViewHeader
         title="OAuth Connections"
-        subtitle="Providers that authenticate with a Google account instead of an API key."
+        subtitle="Providers that authenticate with user accounts instead of direct API keys."
       >
         <div className="oauth-header-actions">
-          <select
+          <Select
             className="oauth-type-select"
             value={type}
-            onChange={(e) => setType(e.target.value as OAuthProviderType)}
+            onChange={(v) => setType(v as OAuthProviderType)}
+            options={OAUTH_TYPES.map((t) => ({ value: t.id, label: t.label }))}
             aria-label="Provider type"
-          >
-            {OAUTH_TYPES.map((t) => (
-              <option key={t.id} value={t.id}>{t.label}</option>
-            ))}
-          </select>
+            style={{ minWidth: 200 }}
+          />
           <button
             className="google-signin-btn"
             onClick={handleSignIn}
@@ -162,20 +161,28 @@ export function OAuthAccountsView() {
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
 
-      <div className="mt-4">
+      <div className="oauth-view-body mt-4">
         {type === 'antigravity' && (
-          <div className="quota-refresh-row">
-            <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing}>
+          <div className="oauth-toolbar quota-refresh-row">
+            <div className="oauth-toolbar-info">
+              <span className="mono text-dim" style={{ fontSize: 'var(--fs-1)' }}>
+                {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} connected
+              </span>
+            </div>
+            <Button variant="ghost" onClick={refreshQuota} disabled={quotaRefreshing} size="sm">
+              <RefreshCw size={13} className={quotaRefreshing ? 'spin' : ''} style={{ marginRight: 6 }} />
               {quotaRefreshing ? 'Refreshing quota…' : 'Refresh quota'}
             </Button>
           </div>
         )}
+
         {accounts.length === 0 && (
           <EmptyState
             title="No connected accounts"
-            hint="Sign in to use an OAuth-backed provider."
+            hint={`Sign in to connect your ${type === 'codex' ? 'Codex' : 'Antigravity'} account.`}
           />
         )}
+
         <div className="oauth-grid">
           {accounts.map((a) => (
             <div
@@ -192,10 +199,14 @@ export function OAuthAccountsView() {
                   {a.valid ? 'Connected' : 'Needs re-auth'}
                 </Pill>
               </div>
+
               {type === 'antigravity' && quotaData[a.providerId] && (
                 <div className="oauth-quota-section">
                   {quotaData[a.providerId].error ? (
-                    <div className="oauth-quota-error">{quotaData[a.providerId].error}</div>
+                    <div className="oauth-quota-error">
+                      <AlertCircle size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} />
+                      {quotaData[a.providerId].error}
+                    </div>
                   ) : quotaData[a.providerId].items.length === 0 ? (
                     <div className="oauth-quota-empty">No quota data</div>
                   ) : (
@@ -203,13 +214,16 @@ export function OAuthAccountsView() {
                   )}
                 </div>
               )}
+
               <div className="oauth-card-actions">
                 {!a.valid && (
-                  <Button variant="primary" onClick={handleReconnect} disabled={loggingIn}>
+                  <Button variant="primary" size="sm" onClick={handleReconnect} disabled={loggingIn}>
+                    <LogIn size={13} style={{ marginRight: 4 }} />
                     Reconnect
                   </Button>
                 )}
-                <Button variant="danger" onClick={() => handleSignOut(a.providerId)}>
+                <Button variant="danger" size="sm" onClick={() => handleSignOut(a.providerId)}>
+                  <LogOut size={13} style={{ marginRight: 4 }} />
                   Sign out
                 </Button>
               </div>

@@ -1,6 +1,32 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { Modal, ConfirmDialog, Toggle, Spinner, Checkbox, Select } from './ui'
+import { Modal, ConfirmDialog, Toggle, Spinner, Checkbox, Select, Button, Input, BaseInput } from './ui'
+
+describe('Button', () => {
+  it('renders size and variant classes', () => {
+    render(<Button variant="primary" size="sm">Action</Button>)
+    const btn = screen.getByRole('button', { name: 'Action' })
+    expect(btn.classList.contains('btn--primary')).toBe(true)
+    expect(btn.classList.contains('btn--sm')).toBe(true)
+  })
+})
+
+describe('Input and BaseInput', () => {
+  it('renders Input with size class', () => {
+    render(<Input size="lg" placeholder="Large input" />)
+    const input = screen.getByPlaceholderText('Large input')
+    expect(input.classList.contains('input--lg')).toBe(true)
+  })
+
+  it('renders BaseInput with clearable button and calls onClear', () => {
+    let cleared = false
+    render(<BaseInput value="text" onChange={() => {}} clearable onClear={() => { cleared = true }} placeholder="Search" />)
+    const clearBtn = screen.getByRole('button', { name: 'Clear text' })
+    expect(clearBtn).toBeTruthy()
+    fireEvent.click(clearBtn)
+    expect(cleared).toBe(true)
+  })
+})
 
 describe('Modal', () => {
   it('renders nothing when closed', () => {
@@ -84,10 +110,17 @@ describe('Checkbox', () => {
 })
 
 describe('Select', () => {
-  it('renders options with a placeholder', () => {
-    render(<Select placeholder="Pick" options={[{ value: 'a', label: 'A' }]} />)
-    expect(screen.getByRole('option', { name: 'Pick' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'A' })).toBeTruthy()
+  it('renders combobox trigger and opens options on click', () => {
+    let selected = ''
+    render(<Select placeholder="Pick an option" value={selected} onChange={(v) => { selected = v }} options={[{ value: 'a', label: 'Option A' }]} />)
+    const trigger = screen.getByRole('combobox')
+    expect(trigger).toBeTruthy()
+    expect(screen.getByText('Pick an option')).toBeTruthy()
+    fireEvent.click(trigger)
+    const option = screen.getByRole('option', { name: 'Option A' })
+    expect(option).toBeTruthy()
+    fireEvent.click(option)
+    expect(selected).toBe('a')
   })
 })
 

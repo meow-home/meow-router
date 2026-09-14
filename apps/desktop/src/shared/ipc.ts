@@ -17,6 +17,7 @@ import type { ModelInfo, CredentialCheckResult } from '@meow-gateway/provider-co
 import type { QuotaItem } from '@meow-gateway/provider-antigravity'
 
 export interface WindowApi {
+  setTheme(theme: "dark" | "light"): Promise<void>
   getAppVersion(): Promise<string>
   listProviders(): Promise<ProviderWithCredential[]>
   createProvider(input: NewProviderInput): Promise<ProviderRow>
@@ -62,6 +63,9 @@ export interface WindowApi {
 }
 
 export const IPC_CHANNELS = {
+  theme: {
+    set: "theme:set"
+  },
   ping: 'app:ping',
   getAppVersion: 'app:get-version',
   provider: {

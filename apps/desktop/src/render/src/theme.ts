@@ -9,6 +9,9 @@ export function getTheme(): Theme {
 export function applyTheme(theme?: Theme): void {
   const resolved = theme ?? getTheme()
   document.documentElement.setAttribute('data-theme', resolved)
+  if (typeof window !== 'undefined' && window.meowGateway?.setTheme) {
+    window.meowGateway.setTheme(resolved).catch(() => {})
+  }
 }
 
 export function watchTheme(onChange?: (theme: Theme) => void): () => void {
@@ -21,3 +24,6 @@ export function watchTheme(onChange?: (theme: Theme) => void): () => void {
   window.addEventListener('storage', onStorage)
   return () => window.removeEventListener('storage', onStorage)
 }
+
+// Apply initial theme on module load to sync window frame & title bar
+applyTheme()

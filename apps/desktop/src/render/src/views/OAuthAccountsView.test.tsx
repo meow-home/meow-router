@@ -105,7 +105,8 @@ describe('OAuthAccountsView', () => {
   it('shows a Codex logo (not the Google logo) on the Codex sign-in button', async () => {
     render(<OAuthAccountsView />)
     const select = await screen.findByRole('combobox')
-    fireEvent.change(select, { target: { value: 'codex' } })
+    fireEvent.click(select)
+    fireEvent.click(screen.getByRole('option', { name: 'Codex (OpenAI)' }))
     const btn = await screen.findByRole('button', { name: /sign in with codex/i })
     // The Codex button must carry the Codex logo, not the Google G.
     expect(btn.querySelector('.codex-logo')).toBeTruthy()
@@ -117,7 +118,8 @@ describe('OAuthAccountsView', () => {
     gw.oauthStartLogin.mockResolvedValue({ pending: true, redirectUri: 'http://localhost:9999/callback' })
     render(<OAuthAccountsView />)
     const select = await screen.findByRole('combobox')
-    fireEvent.change(select, { target: { value: 'codex' } })
+    fireEvent.click(select)
+    fireEvent.click(screen.getByRole('option', { name: 'Codex (OpenAI)' }))
     // Button label switches to the Codex sign-in label
     const btn = await screen.findByRole('button', { name: /sign in with codex/i })
     fireEvent.click(btn)

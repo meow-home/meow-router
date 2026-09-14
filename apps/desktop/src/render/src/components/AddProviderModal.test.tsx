@@ -68,16 +68,19 @@ describe('AddProviderModal', () => {
 
     it('follows the type while the name is untouched', () => {
       const { name, type } = open()
-      fireEvent.change(type, { target: { value: 'groq' } })
+      fireEvent.click(type)
+      fireEvent.click(screen.getByRole('option', { name: 'Groq' }))
       expect(name.value).toBe('Groq')
-      fireEvent.change(type, { target: { value: 'opencode' } })
+      fireEvent.click(type)
+      fireEvent.click(screen.getByRole('option', { name: 'opencode Zen' }))
       expect(name.value).toBe('opencode Zen')
     })
 
     it('keeps a hand-typed name when the type changes', () => {
       const { name, type } = open()
       fireEvent.change(name, { target: { value: 'Con meo' } })
-      fireEvent.change(type, { target: { value: 'groq' } })
+      fireEvent.click(type)
+      fireEvent.click(screen.getByRole('option', { name: 'Groq' }))
       expect(name.value).toBe('Con meo')
     })
 
@@ -85,7 +88,8 @@ describe('AddProviderModal', () => {
       const { name, type } = open()
       fireEvent.change(name, { target: { value: 'Con meo' } })
       fireEvent.change(name, { target: { value: '' } })
-      fireEvent.change(type, { target: { value: 'groq' } })
+      fireEvent.click(type)
+      fireEvent.click(screen.getByRole('option', { name: 'Groq' }))
       expect(name.value).toBe('Groq')
     })
   })
