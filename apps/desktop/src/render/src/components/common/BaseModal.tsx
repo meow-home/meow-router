@@ -119,6 +119,27 @@ export function ModalFooter({
  * Supports both compound component pattern (<BaseModal.Header>, <BaseModal.Body>, <BaseModal.Footer>)
  * and simple prop-based pattern (title, children, footer/actions, onClose).
  */
+function hasCompoundChildren(children: ReactNode): boolean {
+  let found = false
+  React.Children.forEach(children, (child) => {
+    if (found) return
+    if (React.isValidElement(child)) {
+      if (
+        child.type === ModalHeader ||
+        child.type === ModalBody ||
+        child.type === ModalFooter
+      ) {
+        found = true
+      } else if (child.type === React.Fragment) {
+        if (hasCompoundChildren((child.props as { children?: ReactNode }).children)) {
+          found = true
+        }
+      }
+    }
+  })
+  return found
+}
+
 export function BaseModal({
   open = true,
   title,
@@ -162,14 +183,7 @@ export function BaseModal({
     ...(width ? { width: typeof width === 'number' ? `${width}px` : width } : {})
   }
 
-  const childArray = React.Children.toArray(children)
-  const isCompound = childArray.some(
-    child => React.isValidElement(child) && (
-      child.type === ModalHeader ||
-      child.type === ModalBody ||
-      child.type === ModalFooter
-    )
-  )
+  const isCompound = hasCompoundChildren(children)
 
   const effectiveFooter = footer ?? actions
 

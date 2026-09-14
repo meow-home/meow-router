@@ -48,4 +48,12 @@ describe('EditProviderModal', () => {
     await waitFor(() => expect(gw.setProviderCredential).not.toHaveBeenCalled())
     await waitFor(() => expect(gw.updateProvider).toHaveBeenCalled())
   })
+
+  it('renders a single clean modal container without nested dialog-body elements', () => {
+    render(<EditProviderModal open provider={provider} types={types} onClose={vi.fn()} onUpdated={vi.fn()} />)
+    const dialog = document.querySelector('.dialog')
+    expect(dialog).not.toBeNull()
+    const bodies = dialog?.querySelectorAll('.dialog-body')
+    expect(bodies?.length).toBe(1)
+  })
 })

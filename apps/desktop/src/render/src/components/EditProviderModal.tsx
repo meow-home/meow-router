@@ -40,7 +40,7 @@ export function EditProviderModal({
     try {
       const updated = await window.meowGateway.updateProvider(provider.id, {
         display_name: displayName,
-        base_url: baseUrl || null,
+ base_url: baseUrl || null,
         enabled,
       })
       if (keyValue) await window.meowGateway.setProviderCredential(provider.id, keyValue)
@@ -51,40 +51,40 @@ export function EditProviderModal({
     }
   }
 
+  if (!open || !provider) return null
+
   return (
-    <BaseModal open={open && !!provider} onClose={onClose} width={500}>
-      {provider && (
-        <>
-          <BaseModal.Header
-            title="Edit Provider"
-            subtitle={`Update configuration for ${provider.display_name}`}
-            onClose={onClose}
-          />
-          <BaseModal.Body>
-            <ProviderFields
-              types={types}
-              type={provider.type}
-              setType={() => {}}
-              typeLocked
-              displayName={displayName}
-              setDisplayName={setDisplayName}
-              baseUrl={baseUrl}
-              setBaseUrl={setBaseUrl}
-              keyValue={keyValue}
-              setKeyValue={setKeyValue}
-              keyPlaceholder={provider.hasCredential ? 'Leave blank to keep current key' : 'Enter API key'}
-              enabled={enabled}
-              setEnabled={setEnabled}
-              showEnabled
-            />
-            {error && <ErrorBanner>{error}</ErrorBanner>}
-          </BaseModal.Body>
-          <BaseModal.Footer>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={handleSubmit} disabled={busy}>Save Provider</Button>
-          </BaseModal.Footer>
-        </>
-      )}
+    <BaseModal open={open} onClose={onClose} width={500}>
+      <BaseModal.Header
+        title="Edit Provider"
+        subtitle={`Update configuration for ${provider.display_name}`}
+        onClose={onClose}
+      />
+      <BaseModal.Body>
+        <ProviderFields
+          types={types}
+          type={provider.type}
+          setType={() => {}}
+          typeLocked
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          baseUrl={baseUrl}
+          setBaseUrl={setBaseUrl}
+          keyValue={keyValue}
+          setKeyValue={setKeyValue}
+          keyPlaceholder={provider.hasCredential ? 'Leave blank to keep current key' : 'Enter API key'}
+          enabled={enabled}
+          setEnabled={setEnabled}
+          showEnabled
+        />
+        {error && <ErrorBanner>{error}</ErrorBanner>}
+      </BaseModal.Body>
+      <BaseModal.Footer>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" onClick={handleSubmit} disabled={busy}>
+          {busy ? 'Saving…' : 'Save Provider'}
+        </Button>
+      </BaseModal.Footer>
     </BaseModal>
   )
 }
