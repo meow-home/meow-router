@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, Plus, Edit3, Trash2, Cpu } from 'lucide-react'
+import { RefreshCw, Plus, Edit3, Trash2, Cpu, Search, Zap, Wrench, Eye, Brain, Code2 } from 'lucide-react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
-import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
+import { ViewHeader, Button, Field, EmptyState, BaseModal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
 
 interface Capabilities {
   streaming: boolean
@@ -33,12 +33,12 @@ function parseCapabilities(json: string | null): Capabilities {
   }
 }
 
-const capabilityLabels: Array<{ key: keyof Capabilities; label: string }> = [
-  { key: 'streaming', label: 'Streaming' },
-  { key: 'tools', label: 'Tools' },
-  { key: 'vision', label: 'Vision' },
-  { key: 'reasoning', label: 'Reasoning' },
-  { key: 'structuredOutput', label: 'Structured' },
+const capabilityConfig: Array<{ key: keyof Capabilities; label: string; icon: React.ReactNode }> = [
+  { key: 'streaming', label: 'Streaming', icon: <Zap size={12} /> },
+  { key: 'tools', label: 'Tools', icon: <Wrench size={12} /> },
+  { key: 'vision', label: 'Vision', icon: <Eye size={12} /> },
+  { key: 'reasoning', label: 'Reasoning', icon: <Brain size={12} /> },
+  { key: 'structuredOutput', label: 'Structured', icon: <Code2 size={12} /> },
 ]
 
 interface ModelFormProps {
@@ -62,7 +62,6 @@ function ModelForm({ open, providers, defaultProviderId, model, onSave, onCancel
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Re-initialise whenever the dialog opens (add) or the edit target changes.
   useEffect(() => {
     if (!open) return
     setProviderId(model?.provider_id ?? defaultProviderId)
@@ -103,58 +102,61 @@ function ModelForm({ open, providers, defaultProviderId, model, onSave, onCancel
   }
 
   return (
-    <Modal
-      open={open}
-      title={model ? 'Edit Model' : 'Add Model'}
-      width={520}
-      onClose={onCancel}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} disabled={busy}>{busy ? 'Saving…' : 'Save Model'}</Button>
-        </>
-      }
-    >
-      <div className="form-grid">
-        <Field label="Provider">
-          <Select value={providerId} onChange={setProviderId} disabled={!!model} options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
-        </Field>
-        <Field label="Provider Model ID">
-          <Input value={providerModelId} onChange={(e) => setProviderModelId(e.target.value)} />
-        </Field>
-        <Field label="Display Name">
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-        </Field>
-        <Field label="Context Window">
-          <Input type="number" value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} />
-        </Field>
-        <Field label="Input Price">
-          <Input type="number" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} />
-        </Field>
-        <Field label="Output Price">
-          <Input type="number" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} />
-        </Field>
-      </div>
-
-      <div style={{ marginTop: 'var(--space-3)' }}>
-        <span className="field-label">Capabilities</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
-          {capabilityLabels.map(({ key, label }) => (
-            <Checkbox key={key} checked={capabilities[key]} onChange={() => toggleCapability(key)}>
-              {label}
-            </Checkbox>
-          ))}
+    <BaseModal open={open} onClose={onCancel} width={540}>
+      <BaseModal.Header
+        title={model ? 'Edit Model' : 'Add Model'}
+        subtitle={model ? `Configure model parameters for ${model.display_name}` : 'Register a new provider model'}
+        onClose={onCancel}
+      />
+      <BaseModal.Body>
+        <div className="form-grid">
+          <Field label="Provider">
+            <Select value={providerId} onChange={setProviderId} disabled={!!model} options={providers.map((p) => ({ value: p.id, label: p.display_name }))} />
+          </Field>
+          <Field label="Provider Model ID">
+            <Input value={providerModelId} onChange={(e) => setProviderModelId(e.target.value)} aria-label="Provider Model ID" />
+          </Field>
+          <Field label="Display Name">
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} aria-label="Display Name" />
+          </Field>
+          <Field label="Context Window">
+            <Input type="number" value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="e.g. 128000" aria-label="Context Window" />
+          </Field>
+          <Field label="Input Price ($/1M tokens)">
+            <Input type="number" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} placeholder="0.00" aria-label="Input Price" />
+          </Field>
+          <Field label="Output Price ($/1M tokens)">
+            <Input type="number" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} placeholder="0.00" aria-label="Output Price" />
+          </Field>
         </div>
-      </div>
 
-      <div style={{ marginTop: 'var(--space-2)' }}>
-        <Checkbox checked={enabled} onChange={(e) => setEnabled(e.target.checked)}>
-          Enabled
-        </Checkbox>
-      </div>
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <span className="field-label" style={{ marginBottom: 'var(--space-2)' }}>Supported Capabilities</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
+            {capabilityConfig.map(({ key, label, icon }) => (
+              <Checkbox key={key} checked={capabilities[key]} onChange={() => toggleCapability(key)} aria-label={label}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {icon}
+                  {label}
+                </span>
+              </Checkbox>
+            ))}
+          </div>
+        </div>
 
-      {error && <ErrorBanner>{error}</ErrorBanner>}
-    </Modal>
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <Checkbox checked={enabled} onChange={(e) => setEnabled(e.target.checked)}>
+            Enabled for routing
+          </Checkbox>
+        </div>
+
+        {error && <ErrorBanner>{error}</ErrorBanner>}
+      </BaseModal.Body>
+      <BaseModal.Footer>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" onClick={handleSave} disabled={busy}>{busy ? 'Saving…' : 'Save Model'}</Button>
+      </BaseModal.Footer>
+    </BaseModal>
   )
 }
 
@@ -162,6 +164,7 @@ export function ModelsView() {
   const [providers, setProviders] = useState<ProviderWithCredential[]>([])
   const [providerId, setProviderId] = useState<string>('')
   const [models, setModels] = useState<ModelRow[]>([])
+  const [searchFilter, setSearchFilter] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editTargetId, setEditTargetId] = useState<string | null>(null)
@@ -232,6 +235,12 @@ export function ModelsView() {
 
   const editTarget = editTargetId ? models.find((m) => m.id === editTargetId) ?? null : null
 
+  const filteredModels = models.filter((m) => {
+    if (!searchFilter.trim()) return true
+    const q = searchFilter.toLowerCase()
+    return m.display_name.toLowerCase().includes(q) || m.provider_model_id.toLowerCase().includes(q)
+  })
+
   return (
     <div className="view">
       <ViewHeader title="Models" subtitle="The provider-facing model registry for the selected provider.">
@@ -245,16 +254,34 @@ export function ModelsView() {
         </Button>
       </ViewHeader>
 
-      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 'var(--space-3) var(--space-4)' }}>
-        <span className="field-label" style={{ whiteSpace: 'nowrap', margin: 0 }}>Provider</span>
-        <Select
-          value={providerId}
-          onChange={(v) => { setProviderId(v); refresh(v) }}
-          options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
-          className="provider-filter"
-        />
-        {error && <span className="mono" style={{ color: 'var(--red)', fontSize: 'var(--fs-1)' }}>{error}</span>}
+      {/* Control Bar: Provider Filter + Model Search */}
+      <div className="models-control-bar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+          <span className="field-label" style={{ whiteSpace: 'nowrap', margin: 0 }}>Provider</span>
+          <Select
+            value={providerId}
+            onChange={(v) => { setProviderId(v); refresh(v) }}
+            options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
+            className="provider-filter"
+          />
+
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 220, marginLeft: 12 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, color: 'var(--text-dim)' }} />
+            <Input
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Filter models..."
+              style={{ paddingLeft: 32 }}
+            />
+          </div>
+        </div>
+
+        <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)' }}>
+          {filteredModels.length} models
+        </div>
       </div>
+
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <ModelForm
         open={showForm}
@@ -265,68 +292,92 @@ export function ModelsView() {
         onCancel={handleCancel}
       />
 
-      {!showForm && models.length === 0 && (
-        <EmptyState icon="◇" title="No models for this provider" hint="Run Sync Models or add one manually." />
+      {!showForm && filteredModels.length === 0 && (
+        <EmptyState icon="◇" title="No models found" hint="Run Sync Models or add one manually." />
       )}
 
-      {models.length > 0 && (
+      {filteredModels.length > 0 && (
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Model Name</th>
                 <th>Model ID</th>
-                <th>Context</th>
-                <th>In ($)</th>
-                <th>Out ($)</th>
+                <th>Context Window</th>
+                <th>Pricing ($/1M)</th>
                 <th>Capabilities</th>
                 <th>Status</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {models.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Cpu size={14} style={{ color: 'var(--accent)' }} />
-                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-strong)' }}>{m.display_name}</span>
-                    </div>
-                  </td>
-                  <td className="mono" style={{ color: 'var(--text-dim)' }}>{m.provider_model_id}</td>
-                  <td className="mono">{m.context_window ? m.context_window.toLocaleString() : '—'}</td>
-                  <td className="mono">{m.input_price ?? '—'}</td>
-                  <td className="mono">{m.output_price ?? '—'}</td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: 280 }}>
-                      {capabilityLabels.map(({ key, label }) => (
-                        <span key={key} style={{ fontSize: '0.75rem', opacity: parseCapabilities(m.capabilities_json)[key] ? 1 : 0.4 }}>
-                          {label}
+              {filteredModels.map((m) => {
+                const caps = parseCapabilities(m.capabilities_json)
+                return (
+                  <tr key={m.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: 'var(--radius-sm)',
+                          background: 'var(--accent-dim)', color: 'var(--accent-strong)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          <Cpu size={15} />
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                          {m.display_name}
                         </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {m.stale && <Pill tone="warn">stale</Pill>}
-                      <Pill tone={m.enabled ? 'ok' : 'muted'}>{m.enabled ? 'enabled' : 'disabled'}</Pill>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <Button onClick={() => handleEdit(m)}>
-                        <Edit3 size={13} style={{ marginRight: '4px' }} />
-                        Edit
-                      </Button>
-                      <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
-                      <Button variant="danger" onClick={() => setDeleting(m)}>
-                        <Trash2 size={13} style={{ marginRight: '4px' }} />
-                        Del
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                    <td className="mono" style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-1)' }}>
+                      {m.provider_model_id}
+                    </td>
+                    <td className="mono">
+                      {m.context_window ? (
+                        <span style={{ background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
+                          {m.context_window.toLocaleString()} tok
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td>
+                      <div className="price-chip">
+                        <span>In: ${m.input_price ?? '0'}</span>
+                        <span style={{ color: 'var(--text-faint)' }}>/</span>
+                        <span>Out: ${m.output_price ?? '0'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 280 }}>
+                        {capabilityConfig.map(({ key, label, icon }) => (
+                          <span key={key} className={`capability-tag ${caps[key] ? 'is-active' : ''}`}>
+                            {icon}
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {m.stale && <Pill tone="warn">stale</Pill>}
+                        <Pill tone={m.enabled ? 'ok' : 'muted'}>{m.enabled ? 'enabled' : 'disabled'}</Pill>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <Button onClick={() => handleEdit(m)}>
+                          <Edit3 size={13} style={{ marginRight: '4px' }} />
+                          Edit
+                        </Button>
+                        <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
+                        <Button variant="danger" onClick={() => setDeleting(m)}>
+                          <Trash2 size={13} style={{ marginRight: '4px' }} />
+                          Del
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -749,6 +749,48 @@ select.input.provider-filter { flex: 0 0 auto; width: auto; min-width: 180px; }
   margin-top: 2px;
 }
 
+/* Models View Enhancements */
+.capability-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-0);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-faint);
+  border: 1px solid transparent;
+  transition: all 120ms ease;
+  user-select: none;
+}
+.capability-tag.is-active {
+  background: var(--accent-dim);
+  color: var(--accent-strong);
+  border-color: var(--accent-border);
+  font-weight: var(--fw-medium);
+}
+
+.price-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+
+.models-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
 .provider-avatar {
   width: 42px; height: 42px; border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
