@@ -143,7 +143,16 @@ key. Antigravity is the first such provider.
   is sanitized to the subset of keywords Gemini's `Schema` accepts (clients send
   full JSON Schema with `$schema`, `exclusiveMinimum`, `additionalProperties`,
   etc., which the API rejects with `400 INVALID_ARGUMENT` "Unknown name ...
-  Cannot find field").
+  Cannot find field"). Two schema *values* are normalized too, because a single
+  bad declaration rejects the whole request (400, ~200 ms, 0 tokens, surfacing
+  as "Antigravity request rejected."):
+  - a `type` union (`['number','null']` — the JSON Schema way of writing a
+    nullable field) becomes `type` + `nullable: true`; a real multi-type union
+    (`['string','number']`) has no Gemini equivalent, so the constraint is
+    dropped instead of pinning the model to one branch;
+  - a local `$ref` (`#/$defs/<name>`) is inlined, so a referenced enum survives
+    instead of collapsing to an empty schema; a reference that repeats while it
+    is being expanded (a recursive schema) is dropped.
 - The gateway itself is provider-neutral and treats an OAuth provider like any
   other: it reads the credential at `provider:<id>` and dispatches through the
   adapter, so `gateway/server.ts` requires no special-casing.

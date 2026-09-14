@@ -215,6 +215,167 @@ describe('AntigravityAdapter', () => {
     expect('exclusiveMinimum' in temp).toBe(false)
   })
 
+  it('normalizes a nullable type array into a single Gemini type', async () => {
+    // Regression: the PMS MCP server publishes `type: ['number','null']` for its
+    // id filters. JSON Schema allows a type union, Gemini's `Schema.type` is a
+    // single enum value, so the whole request was rejected with 400
+    // INVALID_ARGUMENT ("Antigravity request rejected.") and the model never got
+    // to call any MCP tool.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'list work packages' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'mcp__pms__search_work_packages',
+          description: 'Search work packages',
+          parameters: {
+            type: 'object',
+            properties: {
+              assigned_to_id: { type: ['number', 'null'], description: 'Assignee id' },
+              version_id: { type: ['number', 'null'] }
+            }
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    const props = params.properties as Record<string, Record<string, unknown>>
+    expect(props.assigned_to_id).toEqual({ type: 'number', nullable: true, description: 'Assignee id' })
+    expect(props.version_id).toEqual({ type: 'number', nullable: true })
+    expect(JSON.stringify(params)).not.toContain('"type":[')
+  })
+
+  it('drops an ambiguous multi-type union instead of sending a type array', async () => {
+    // `type: ['string','number']` has no Gemini equivalent. Picking one branch
+    // would silently constrain the model, so only the nullability is kept.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: { name: 'mixed', parameters: { type: 'object', properties: { value: { type: ['string', 'number', 'null'] } } } }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    const props = params.properties as Record<string, Record<string, unknown>>
+    expect(props.value).toEqual({ nullable: true })
+  })
+
+  it('inlines a local $ref instead of emptying the schema', async () => {
+    // katalon-docs publishes `$defs` + `$ref` (e.g. `items: { $ref: '#/$defs/KatalonProduct' }`).
+    // Dropping both keys left an empty schema and lost the enum the model needs
+    // to pass a valid value.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'search_docs',
+          parameters: {
+            $defs: { KatalonProduct: { type: 'string', enum: ['katalon-studio', 'katalon-testcloud'] } },
+            type: 'object',
+            properties: { products: { type: 'array', items: { $ref: '#/$defs/KatalonProduct' } } }
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    const products = (params.properties as Record<string, Record<string, unknown>>).products
+    expect(products).toEqual({ type: 'array', items: { type: 'string', enum: ['katalon-studio', 'katalon-testcloud'] } })
+    expect('$defs' in params).toBe(false)
+  })
+
+  it('drops a recursive $ref instead of expanding without bound', async () => {
+    // Recursive MCP schemas (a node carrying children of its own type) must not
+    // expand forever: the ref is inlined once, then the repeat is dropped.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'm',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'tree',
+          parameters: {
+            $defs: { Node: { type: 'object', properties: { label: { type: 'string' }, child: { $ref: '#/$defs/Node' } } } },
+            type: 'object',
+            properties: { root: { $ref: '#/$defs/Node' } }
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    expect((params.properties as Record<string, unknown>).root).toEqual({
+      type: 'object',
+      properties: { label: { type: 'string' }, child: {} }
+    })
+  })
+
   it('streams every content block and only emits finish on a real finishReason (CRLF-safe)', async () => {
     // Regression: the adapter used to emit a `finish` chunk after EVERY SSE
     // block (because each block carries usageMetadata). The gateway stops on the

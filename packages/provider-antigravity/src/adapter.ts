@@ -29,21 +29,60 @@ const GEMINI_SCHEMA_KEYS = new Set([
   'default', 'items', 'minimum', 'maximum'
 ])
 
-function sanitizeSchema(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeSchema)
+// Gemini's `Schema.type` is a single value, but JSON Schema (and the MCP
+// servers built on it) may send a union such as `['number','null']` — a shape
+// the API rejects wholesale with 400 INVALID_ARGUMENT ("Antigravity request
+// rejected."), which is how one nullable id filter used to break every tool
+// call in a session. The nullable idiom collapses to `type` + `nullable`; a
+// genuine multi-type union has no Gemini equivalent, so only the nullability
+// survives rather than silently pinning the model to one arbitrary branch.
+function normalizeTypeUnion(types: unknown[]): { type?: unknown; nullable?: boolean } {
+  const isNull = (t: unknown) => typeof t === 'string' && t.toLowerCase() === 'null'
+  const named = types.filter((t) => typeof t === 'string' && !isNull(t))
+  const out: { type?: unknown; nullable?: boolean } = {}
+  if (named.length === 1) out.type = named[0]
+  if (types.some(isNull)) out.nullable = true
+  return out
+}
+
+// Gemini has no `$ref`. Inlining a local `#/$defs/<name>` target keeps the
+// information the client sent (an enum, for instance); dropping the reference
+// used to leave an empty schema behind. A reference that repeats while it is
+// being expanded (a recursive schema) is dropped instead of expanded forever.
+function inlineLocalRef(ref: string, root: unknown, seenRefs: ReadonlySet<string>): unknown {
+  const match = /^#\/(\$defs|definitions)\/([^/]+)$/.exec(ref)
+  if (!match || seenRefs.has(ref)) return {}
+  const container = (root as Record<string, unknown> | undefined)?.[match[1]] as Record<string, unknown> | undefined
+  const target = container && typeof container === 'object' ? container[match[2]] : undefined
+  if (target === undefined) return {}
+  return sanitizeSchema(target, root, new Set([...seenRefs, ref]))
+}
+
+function sanitizeSchema(value: unknown, root: unknown = value, seenRefs: ReadonlySet<string> = new Set()): unknown {
+  if (Array.isArray(value)) return value.map((v) => sanitizeSchema(v, root, seenRefs))
   if (!value || typeof value !== 'object') return value
+  const obj = value as Record<string, unknown>
+  if (typeof obj.$ref === 'string') return inlineLocalRef(obj.$ref, root, seenRefs)
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(obj)) {
     if (!GEMINI_SCHEMA_KEYS.has(k)) continue
     if (k === 'properties' && v && typeof v === 'object') {
       const props: Record<string, unknown> = {}
-      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) props[pk] = sanitizeSchema(pv)
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) props[pk] = sanitizeSchema(pv, root, seenRefs)
       out[k] = props
     } else if (k === 'items' || k === 'anyOf') {
-      out[k] = sanitizeSchema(v)
+      out[k] = sanitizeSchema(v, root, seenRefs)
+    } else if (k === 'type' && Array.isArray(v)) {
+      // Normalized after the loop, so a union containing `null` wins over an
+      // explicit `nullable: false`.
     } else {
       out[k] = v
     }
+  }
+  if (Array.isArray(obj.type)) {
+    const { type, nullable } = normalizeTypeUnion(obj.type)
+    if (type !== undefined) out.type = type
+    if (nullable) out.nullable = true
   }
   return out
 }
