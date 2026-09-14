@@ -1,8 +1,7 @@
 /* Reusable UI primitives for Meow Gateway — aligned with meow-coding's design system. */
 
-import { useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
+import { BaseModal } from './common/BaseModal'
 
 export { BaseModal } from './common/BaseModal'
 export { BaseDropdown } from './common/BaseDropdown'
@@ -268,43 +267,16 @@ export function Modal({
   onClose: () => void
   width?: number
 }) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  if (!open) return null
-  // Portal to <body>: an ancestor with a transform (the views' entrance
-  // animation keeps one via fill-mode: both) would otherwise become the
-  // containing block for this fixed backdrop, trapping the overlay inside a
-  // scrolling pane instead of covering the whole window.
-  return createPortal(
-    <div
-      className="dialog-backdrop"
-      onClick={onClose}
-      role="presentation"
+  return (
+    <BaseModal
+      open={open}
+      title={title}
+      onClose={onClose}
+      footer={footer}
+      width={width}
     >
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        style={width ? { width } : undefined}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="dialog-close" aria-label="Close" onClick={onClose}>
-          ✕
-        </button>
-        {title && <h3>{title}</h3>}
-        {children}
-        {footer && <div className="dialog-actions">{footer}</div>}
-      </div>
-    </div>,
-    document.body,
+      {children}
+    </BaseModal>
   )
 }
 
