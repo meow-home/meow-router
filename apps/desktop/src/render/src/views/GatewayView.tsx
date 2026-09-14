@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Play, Square, Copy, RefreshCw, Check, Key, Server } from 'lucide-react'
 import type { GatewayStatus, GatewayConfigRow, GatewayKeyInfo } from '@shared/ipc'
-import { ViewHeader, Button, Field, ErrorBanner, Pill, Input, Checkbox, Spinner, ConfirmDialog } from '../components/ui'
+import { ViewHeader, Button, Field, ErrorBanner, Pill, Input, Checkbox, Spinner, ConfirmDialog, Panel } from '../components/ui'
 
 export function GatewayView() {
   const [status, setStatus] = useState<GatewayStatus | null>(null)
@@ -8,6 +9,7 @@ export function GatewayView() {
   const [error, setError] = useState<string | null>(null)
   const [keyInfo, setKeyInfo] = useState<GatewayKeyInfo | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const refresh = async () => {
     const [s, c, k] = await Promise.all([
@@ -24,7 +26,11 @@ export function GatewayView() {
   async function handleStop() { setStatus(await window.meowGateway.gatewayStop()) }
 
   async function handleCopyKey() {
-    try { await window.meowGateway.gatewayCopyKey() } catch (e) { setError(String(e)) }
+    try {
+      await window.meowGateway.gatewayCopyKey()
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) { setError(String(e)) }
   }
 
   async function handleRegenerate() {
@@ -53,34 +59,60 @@ export function GatewayView() {
     <div className="view">
       <ViewHeader title="Gateway" subtitle="Local OpenAI-compatible endpoint your coding agent talks to.">
         {status.running
-          ? <Button variant="live" onClick={handleStop}>■ Stop</Button>
-          : <Button variant="primary" onClick={handleStart}>▶ Start</Button>}
+          ? <Button variant="live" onClick={handleStop}><Square size={14} style={{ marginRight: '6px' }} /> Stop</Button>
+          : <Button variant="primary" onClick={handleStart}><Play size={14} style={{ marginRight: '6px' }} /> Start</Button>}
       </ViewHeader>
 
       <ErrorBanner>{error}</ErrorBanner>
 
-      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderColor: status.running ? 'var(--green-dim)' : 'var(--hairline)' }}>
-        <Pill tone={status.running ? 'live' : 'muted'}>{status.running ? 'running' : 'stopped'}</Pill>
-        <div style={{ flex: 1 }}>
-          <div className="mono" style={{ fontSize: 'var(--fs-3)', letterSpacing: '0.03em' }}>
-            http://{status.host}:{status.port}/v1
+      <Panel className="gateway-hero-card" style={{ padding: 'var(--space-4)', borderColor: status.running ? 'var(--green-dim)' : 'var(--hairline)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div className={`status-badge-icon ${status.running ? 'is-running' : ''}`} style={{
+            width: '44px', height: '44px', borderRadius: 'var(--radius)',
+            background: status.running ? 'var(--accent-dim)' : 'var(--bg-hover)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: status.running ? 'var(--green)' : 'var(--text-dim)'
+          }}>
+            <Server size={24} style={{ margin: 'auto' }} />
           </div>
-          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)' }}>
-            Point an OpenAI-compatible client here to route through Meow Gateway.
+          
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div className="mono" style={{ fontSize: 'var(--fs-4)', fontWeight: 'var(--fw-semibold)', letterSpacing: '0.02em' }}>
+                http://{status.host}:{status.port}/v1
+              </div>
+              <Pill tone={status.running ? 'live' : 'muted'}>{status.running ? 'running' : 'stopped'}</Pill>
+            </div>
+            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--text-dim)', marginTop: '4px' }}>
+              Point any OpenAI-compatible client or coding agent here to route requests locally.
+            </div>
           </div>
+          
+          <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-1)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            {status.running ? 'listening' : 'offline'}
+          </span>
         </div>
-        <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-0)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          {status.running ? 'listening' : 'offline'}
-        </span>
-      </div>
+      </Panel>
 
-      <div style={{ marginTop: 'var(--space-2)' }}>
+      <Panel title="Security & Authentication" style={{ marginTop: 'var(--space-3)' }}>
         <Field label="Gateway API key">
           {keyInfo?.present ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="mono" style={{ flex: 1 }}>{keyInfo.masked}</span>
-              <Button onClick={handleCopyKey}>Copy</Button>
-              <Button variant="danger" onClick={() => setConfirmRegen(true)}>Regenerate</Button>
+              <div style={{
+                flex: 1, background: 'var(--bg-input)', border: '1px solid var(--hairline)',
+                borderRadius: 'var(--radius)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+                <Key size={14} style={{ color: 'var(--accent)' }} />
+                <span className="mono" style={{ flex: 1, fontSize: 'var(--fs-2)' }}>{keyInfo.masked}</span>
+              </div>
+              <Button onClick={handleCopyKey}>
+                {copied ? <Check size={14} style={{ marginRight: '4px' }} /> : <Copy size={14} style={{ marginRight: '4px' }} />}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+              <Button variant="danger" onClick={() => setConfirmRegen(true)}>
+                <RefreshCw size={14} style={{ marginRight: '4px' }} />
+                Regenerate
+              </Button>
             </div>
           ) : (
             <span style={{ color: 'var(--red)', fontSize: 'var(--fs-1)' }}>
@@ -88,9 +120,9 @@ export function GatewayView() {
             </span>
           )}
         </Field>
-      </div>
+      </Panel>
 
-      <div style={{ marginTop: 'var(--space-2)' }}>
+      <Panel title="Gateway Network Settings" style={{ marginTop: 'var(--space-3)' }}>
         <form onSubmit={handleSave}>
           <div className="form-grid">
             <Field label="Host">
@@ -100,7 +132,7 @@ export function GatewayView() {
               <Input name="port" type="number" defaultValue={config.port} />
             </Field>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
             <Checkbox name="auth_enabled" defaultChecked={config.auth_enabled}>
               Require gateway API key
             </Checkbox>
@@ -112,7 +144,7 @@ export function GatewayView() {
             <Button type="submit" variant="primary">Save config</Button>
           </div>
         </form>
-      </div>
+      </Panel>
 
       <ConfirmDialog
         open={confirmRegen}

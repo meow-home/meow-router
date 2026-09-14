@@ -17,14 +17,16 @@ export function Panel({
   actions,
   children,
   className,
+  style,
 }: {
   title?: string
   actions?: ReactNode
   children: ReactNode
   className?: string
+  style?: React.CSSProperties
 }) {
   return (
-    <section className={classNames('panel', className)}>
+    <section className={classNames('panel', className)} style={style}>
       {(title || actions) && (
         <div className="panel-header">
           {title ? <h3 className="panel-title">{title}</h3> : <span />}
