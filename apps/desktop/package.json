@@ -63,13 +63,14 @@
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "@meow-gateway/oauth-core": "workspace:^",
+    "@meow-gateway/provider-antigravity": "workspace:^",
+    "@meow-gateway/provider-codex": "workspace:^",
     "@meow-gateway/provider-core": "workspace:^",
     "@meow-gateway/provider-deepseek": "workspace:^",
     "@meow-gateway/provider-openai": "workspace:^",
-    "@meow-gateway/provider-antigravity": "workspace:^",
-    "@meow-gateway/provider-codex": "workspace:^",
-    "@meow-gateway/oauth-core": "workspace:^",
     "electron-store": "^8.2.0",
+    "lucide-react": "^1.45.0",
     "pino": "^9.0.0",
     "sql.js": "^1.14.2"
   },

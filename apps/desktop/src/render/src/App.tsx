@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { applyTheme, watchTheme } from './theme'
 import { Sidebar, type View } from './components/Sidebar'
 import { UpdateModal } from './components/UpdateModal'
 import { ProvidersView } from './views/ProvidersView'
@@ -16,6 +17,11 @@ export default function App(): JSX.Element {
   const [updateOpen, setUpdateOpen] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateDownloadState>({ status: 'idle' })
   const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    applyTheme()
+    return watchTheme()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
