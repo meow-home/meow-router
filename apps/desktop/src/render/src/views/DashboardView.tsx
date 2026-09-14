@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw, Activity, Zap, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { DashboardTotals, UsagePage } from '@shared/ipc'
 import { ViewHeader, ErrorBanner, Panel, Pill, Spinner, Button } from '../components/ui'
 
@@ -70,6 +71,7 @@ export function DashboardView() {
       <ViewHeader title="Usage" subtitle="Tokens, cost and request health across your providers.">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
           <Button variant="ghost" onClick={() => refresh()} disabled={refreshing}>
+            <RefreshCw size={13} className={refreshing ? 'spin' : ''} style={{ marginRight: '6px' }} />
             {refreshing ? 'Refreshing…' : 'Reload'}
           </Button>
         </div>
@@ -79,35 +81,52 @@ export function DashboardView() {
 
       <div className="stat-grid">
         <div className="stat">
-          <span className="stat__label">Requests</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span className="stat__label">Requests</span>
+            <Activity size={14} style={{ color: 'var(--accent)' }} />
+          </div>
           <span className="stat__value">{totals.totalRequests}</span>
           <span className="stat__meta">all time</span>
         </div>
         <div className="stat">
-          <span className="stat__label">Tokens</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span className="stat__label">Tokens</span>
+            <Zap size={14} style={{ color: 'var(--yellow)' }} />
+          </div>
           <span className="stat__value">{totals.totalTokens}</span>
           <span className="stat__meta">in + out + cached</span>
         </div>
         <div className="stat">
-          <span className="stat__label">Est. Cost</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span className="stat__label">Est. Cost</span>
+            <DollarSign size={14} style={{ color: 'var(--green)' }} />
+          </div>
           <span className="stat__value stat__value--live">{fmtCost(totals.totalCost)}</span>
           <span className="stat__meta">computed from pricing</span>
         </div>
         <div className="stat">
           <span className="stat__label">Success / Error / Aborted</span>
-          <span className="stat__value stat__value--signal">{totals.successRequests}<span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-4)' }}> / </span>{totals.errorRequests}<span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-4)' }}> / </span>{totals.abortedRequests}</span>
+          <span className="stat__value stat__value--signal">
+            {totals.successRequests}
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-4)' }}> / </span>
+            {totals.errorRequests}
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-4)' }}> / </span>
+            {totals.abortedRequests}
+          </span>
           <span className="stat__meta">health split</span>
         </div>
       </div>
 
       {totals.byProvider.length > 0 && (
-        <Panel title="By provider">
+        <Panel title="By provider" style={{ marginTop: 'var(--space-3)' }}>
           <table className="table">
             <thead><tr><th>Provider</th><th>Requests</th><th>Est. Cost</th></tr></thead>
             <tbody>
               {totals.byProvider.map((bp) => (
                 <tr key={bp.provider_id}>
-                  <td style={{ fontFamily: 'var(--font-display)' }}>{bp.provider_name ?? bp.provider_id}</td>
+                  <td style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-strong)' }}>
+                    {bp.provider_name ?? bp.provider_id}
+                  </td>
                   <td className="mono">{bp.request_count}</td>
                   <td className="mono">{fmtCost(bp.total_cost)}</td>
                 </tr>
@@ -119,13 +138,18 @@ export function DashboardView() {
 
       <Panel
         title="Recent requests"
+        style={{ marginTop: 'var(--space-3)' }}
         actions={
           page.total > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 'var(--fs-0)' }}>{page.total} total</span>
-              <Button variant="ghost" disabled={currentPage <= 1} onClick={() => loadPage(currentPage - 1)}>‹ Prev</Button>
+              <Button variant="ghost" disabled={currentPage <= 1} onClick={() => loadPage(currentPage - 1)}>
+                <ChevronLeft size={13} style={{ marginRight: '2px' }} /> Prev
+              </Button>
               <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-0)' }}>{currentPage} / {totalPages}</span>
-              <Button variant="ghost" disabled={currentPage >= totalPages} onClick={() => loadPage(currentPage + 1)}>Next ›</Button>
+              <Button variant="ghost" disabled={currentPage >= totalPages} onClick={() => loadPage(currentPage + 1)}>
+                Next <ChevronRight size={13} style={{ marginLeft: '2px' }} />
+              </Button>
             </div>
           ) : undefined
         }
@@ -155,7 +179,7 @@ export function DashboardView() {
                 {page.rows.map((r) => (
                   <tr key={r.id}>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.request_id}</td>
-                    <td style={{ fontFamily: 'var(--font-display)' }}>{r.virtual_model_id}</td>
+                    <td style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{r.virtual_model_id}</td>
                     <td>{r.provider_name ?? r.provider_id}</td>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.provider_model_id}</td>
                     <td className="mono">{r.input_tokens + r.output_tokens + r.cached_tokens}</td>
