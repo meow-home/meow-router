@@ -116,7 +116,6 @@
 svg.lucide, .lucide {
   stroke-width: 1.75;
 }
-}
 
 * { box-sizing: border-box; border-radius: var(--radius); }
 html, body, #root { height: 100%; margin: 0; }
