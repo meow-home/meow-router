@@ -107,47 +107,50 @@ export function ProvidersView() {
         <EmptyState icon="⇄" title="No providers yet" hint="Add a provider to start routing model traffic." />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {providers.map((p) => (
           <div key={p.id} className={classNames('provider-card', p.enabled ? '' : 'is-disabled')}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div className={`provider-avatar ${getAvatarClass(p.type)}`}>
-                {p.display_name.charAt(0).toUpperCase()}
+            {/* Header: Avatar, Name, Type Tag & Status Pills */}
+            <div className="provider-card-header">
+              <div className="provider-card-title-group">
+                <div className={`provider-avatar ${getAvatarClass(p.type)}`}>
+                  {p.display_name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.01em', color: 'var(--text-strong)' }}>
+                      {p.display_name}
+                    </strong>
+                    <span className="provider-type-tag">{p.type}</span>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.01em', color: 'var(--text-strong)' }}>
-                    {p.display_name}
-                  </strong>
-                  <Pill tone={p.enabled ? 'ok' : 'muted'}>{p.enabled ? 'enabled' : 'disabled'}</Pill>
-                  {p.hasCredential ? (
-                    <Pill tone="ok"><Key size={12} style={{ marginRight: '4px' }} />key set</Pill>
-                  ) : (
-                    <Pill tone="warn">no key</Pill>
-                  )}
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Pill tone={p.enabled ? 'ok' : 'muted'}>{p.enabled ? 'enabled' : 'disabled'}</Pill>
+                {p.hasCredential ? (
+                  <Pill tone="ok"><Key size={12} style={{ marginRight: '4px' }} />key set</Pill>
+                ) : (
+                  <Pill tone="warn">no key</Pill>
+                )}
+              </div>
+            </div>
 
-                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 6, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ textTransform: 'lowercase', background: 'var(--bg-hover)', padding: '1px 6px', borderRadius: 'var(--radius-sm)' }}>
-                    {p.type}
-                  </span>
-                  <span style={{ color: 'var(--text-faint)' }}>·</span>
-                  <Globe size={12} style={{ color: 'var(--text-faint)' }} />
-                  <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                    {p.base_url || 'default provider endpoint'}
-                  </span>
-                </div>
+            {/* Endpoint Information */}
+            <div className="provider-endpoint-box">
+              <Globe size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              <span className="mono" style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                {p.base_url || 'Default provider endpoint'}
+              </span>
+            </div>
+
+            {/* Footer Action Bar */}
+            <div className="provider-card-footer">
+              <div className="mono" style={{ fontSize: 'var(--fs-0)', color: 'var(--text-faint)' }}>
+                ID: {p.id}
               </div>
 
               <div className="view-actions" style={{ gap: '6px' }}>
-                <Button onClick={() => setEditing(p)} title="Edit configuration">
-                  <Edit3 size={13} style={{ marginRight: '4px' }} />
-                  Edit
-                </Button>
-                <Button onClick={() => handleToggle(p)}>
-                  {p.enabled ? 'Disable' : 'Enable'}
-                </Button>
                 <Button onClick={() => handleTest(p)} title="Test provider connection">
                   <Zap size={13} style={{ marginRight: '4px' }} />
                   Test
@@ -155,6 +158,13 @@ export function ProvidersView() {
                 <Button onClick={() => handleDiscover(p)} title="Discover available models">
                   <RefreshCw size={13} style={{ marginRight: '4px' }} />
                   Sync Models
+                </Button>
+                <Button onClick={() => setEditing(p)} title="Edit configuration">
+                  <Edit3 size={13} style={{ marginRight: '4px' }} />
+                  Edit
+                </Button>
+                <Button onClick={() => handleToggle(p)}>
+                  {p.enabled ? 'Disable' : 'Enable'}
                 </Button>
                 <Button variant="danger" onClick={() => setDeleting(p)} title="Delete provider">
                   <Trash2 size={13} style={{ marginRight: '4px' }} />
