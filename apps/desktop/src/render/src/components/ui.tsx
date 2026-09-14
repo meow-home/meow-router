@@ -4,6 +4,10 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 
+export { BaseModal } from './common/BaseModal'
+export { BaseDropdown } from './common/BaseDropdown'
+export { BaseSelect } from './common/BaseSelect'
+
 export function classNames(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
