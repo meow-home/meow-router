@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Plus, Zap, RefreshCw, Edit3, Trash2, Key, Globe } from 'lucide-react'
 import type { ProviderWithCredential, ProviderTypeDescriptor } from '@shared/ipc'
 import { ViewHeader, Button, Pill, ErrorBanner, EmptyState, Modal, ConfirmDialog, classNames } from '../components/ui'
 import { AddProviderModal } from '../components/AddProviderModal'
@@ -54,6 +55,7 @@ export function ProvidersView() {
     <div className="view">
       <ViewHeader title="Providers" subtitle="Connect AI providers and manage their credentials.">
         <Button variant="primary" onClick={() => setShowAdd(true)}>
+          <Plus size={14} style={{ marginRight: '6px' }} />
           Add Provider
         </Button>
       </ViewHeader>
@@ -64,31 +66,60 @@ export function ProvidersView() {
         <EmptyState icon="⇄" title="No providers yet" hint="Add a provider to start routing model traffic." />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {providers.map((p) => (
-          <div key={p.id} className={classNames('panel', p.enabled ? '' : 'panel--off')}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span className="rail__logo" style={{ width: 26, height: 26, fontSize: 'var(--fs-3)' }} aria-hidden="true">
+          <div key={p.id} className={classNames('panel', p.enabled ? '' : 'panel--off')} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 'var(--radius)',
+                background: p.enabled ? 'var(--accent-dim)' : 'var(--bg-hover)',
+                color: p.enabled ? 'var(--accent-strong)' : 'var(--text-dim)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 'var(--fw-semibold)', fontSize: '1rem'
+              }}>
                 {p.display_name.charAt(0).toUpperCase()}
-              </span>
-              <div style={{ flex: 1 }}>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.02em' }}>
+                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.02em', color: 'var(--text-strong)' }}>
                     {p.display_name}
                   </strong>
                   <Pill tone={p.enabled ? 'ok' : 'muted'}>{p.enabled ? 'enabled' : 'disabled'}</Pill>
-                  {p.hasCredential ? <Pill tone="ok">key set</Pill> : <Pill tone="warn">no key</Pill>}
+                  {p.hasCredential ? (
+                    <Pill tone="ok"><Key size={12} style={{ marginRight: '4px' }} />key set</Pill>
+                  ) : (
+                    <Pill tone="warn">no key</Pill>
+                  )}
                 </div>
-                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 4 }}>
-                  {p.type} <span style={{ color: 'var(--text-faint)' }}>·</span> {p.base_url || 'default endpoint'}
+                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 4, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{p.type}</span>
+                  <span style={{ color: 'var(--text-faint)' }}>·</span>
+                  <Globe size={12} style={{ color: 'var(--text-faint)' }} />
+                  <span>{p.base_url || 'default endpoint'}</span>
                 </div>
               </div>
-              <div className="view-actions">
-                <Button onClick={() => setEditing(p)}>Edit</Button>
-                <Button onClick={() => handleToggle(p)}>{p.enabled ? 'Disable' : 'Enable'}</Button>
-                <Button onClick={() => handleTest(p)}>Test</Button>
-                <Button onClick={() => handleDiscover(p)}>Sync Models</Button>
-                <Button variant="danger" onClick={() => setDeleting(p)}>Delete</Button>
+
+              <div className="view-actions" style={{ gap: '6px' }}>
+                <Button onClick={() => setEditing(p)} title="Edit configuration">
+                  <Edit3 size={13} style={{ marginRight: '4px' }} />
+                  Edit
+                </Button>
+                <Button onClick={() => handleToggle(p)}>
+                  {p.enabled ? 'Disable' : 'Enable'}
+                </Button>
+                <Button onClick={() => handleTest(p)} title="Test provider connection">
+                  <Zap size={13} style={{ marginRight: '4px' }} />
+                  Test
+                </Button>
+                <Button onClick={() => handleDiscover(p)} title="Discover available models">
+                  <RefreshCw size={13} style={{ marginRight: '4px' }} />
+                  Sync Models
+                </Button>
+                <Button variant="danger" onClick={() => setDeleting(p)} title="Delete provider">
+                  <Trash2 size={13} style={{ marginRight: '4px' }} />
+                  Delete
+                </Button>
               </div>
             </div>
           </div>
