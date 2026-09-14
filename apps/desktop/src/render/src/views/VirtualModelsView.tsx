@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Plus, Edit3, Trash2, Route, ArrowRight } from 'lucide-react'
 import type { ProviderWithCredential, VirtualModelRow } from '@shared/ipc'
 import { ViewHeader, Button, ErrorBanner, EmptyState, Pill, ConfirmDialog, classNames } from '../components/ui'
 import { VirtualModelModal } from '../components/VirtualModelModal'
@@ -57,6 +58,7 @@ export function VirtualModelsView() {
     <div className="view">
       <ViewHeader title="Virtual Models" subtitle="Public IDs your coding agent calls — mapped to a concrete provider model.">
         <Button variant="primary" onClick={handleNew}>
+          <Plus size={14} style={{ marginRight: '6px' }} />
           + New Virtual Model
         </Button>
       </ViewHeader>
@@ -85,26 +87,45 @@ export function VirtualModelsView() {
         <EmptyState icon="↦" title="No virtual models" hint="Map a stable public name to a provider model." />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {vms.map((vm) => (
-          <div key={vm.id} className={classNames('panel', vm.enabled ? '' : 'panel--off')}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1 }}>
+          <div key={vm.id} className={classNames('panel', vm.enabled ? '' : 'panel--off')} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 'var(--radius)',
+                background: vm.enabled ? 'var(--accent-dim)' : 'var(--bg-hover)',
+                color: vm.enabled ? 'var(--accent-strong)' : 'var(--text-dim)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Route size={20} />
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.02em' }}>
+                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-3)', letterSpacing: '0.02em', color: 'var(--text-strong)' }}>
                     {vm.display_name}
                   </strong>
                   <Pill tone={vm.enabled ? 'ok' : 'muted'}>{vm.enabled ? 'active' : 'disabled'}</Pill>
                 </div>
-                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 4 }}>
-                  {providerName(vm.provider_id)} <span style={{ color: 'var(--text-faint)' }}>→</span> {vm.provider_model_id}
-                  <span style={{ color: 'var(--text-faint)' }}> · id </span>{vm.id}
+                <div className="mono" style={{ fontSize: 'var(--fs-1)', color: 'var(--text-dim)', marginTop: 4, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{providerName(vm.provider_id)}</span>
+                  <ArrowRight size={12} style={{ color: 'var(--accent)' }} />
+                  <span style={{ color: 'var(--text-strong)' }}>{vm.provider_model_id}</span>
+                  <span style={{ color: 'var(--text-faint)' }}> · id </span>
+                  <span style={{ color: 'var(--text-faint)' }}>{vm.id}</span>
                 </div>
               </div>
-              <div className="view-actions">
-                <Button onClick={() => handleEdit(vm)}>Edit</Button>
+
+              <div className="view-actions" style={{ gap: '6px' }}>
+                <Button onClick={() => handleEdit(vm)}>
+                  <Edit3 size={13} style={{ marginRight: '4px' }} />
+                  Edit
+                </Button>
                 <Button onClick={() => handleToggle(vm)}>{vm.enabled ? 'Disable' : 'Enable'}</Button>
-                <Button variant="danger" onClick={() => setDeleting(vm)}>Delete</Button>
+                <Button variant="danger" onClick={() => setDeleting(vm)}>
+                  <Trash2 size={13} style={{ marginRight: '4px' }} />
+                  Delete
+                </Button>
               </div>
             </div>
           </div>

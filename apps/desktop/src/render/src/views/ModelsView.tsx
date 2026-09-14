@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { RefreshCw, Plus, Edit3, Trash2, Cpu } from 'lucide-react'
 import type { ProviderWithCredential, ModelRow, NewModel } from '@shared/ipc'
 import { ViewHeader, Button, Field, EmptyState, Modal, Select, Input, Checkbox, ErrorBanner, ConfirmDialog, Pill } from '../components/ui'
 
@@ -213,8 +214,6 @@ export function ModelsView() {
 
   async function handleSaveModel(input: NewModel) {
     if (editTargetId) {
-      // A model's provider is immutable after creation; strip provider_id from the patch
-      // so updateModel does not reject it with INVALID_INPUT.
       const { provider_id: _providerId, ...patch } = input
       void _providerId
       await window.meowGateway.updateModel(editTargetId, patch)
@@ -236,19 +235,25 @@ export function ModelsView() {
   return (
     <div className="view">
       <ViewHeader title="Models" subtitle="The provider-facing model registry for the selected provider.">
-        <Button onClick={handleSyncModels}>Sync Models</Button>
-        <Button variant="primary" onClick={handleAdd}>Add Model</Button>
+        <Button onClick={handleSyncModels}>
+          <RefreshCw size={13} style={{ marginRight: '6px' }} />
+          Sync Models
+        </Button>
+        <Button variant="primary" onClick={handleAdd}>
+          <Plus size={14} style={{ marginRight: '6px' }} />
+          Add Model
+        </Button>
       </ViewHeader>
 
-      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span className="field-label" style={{ whiteSpace: 'nowrap' }}>Provider</span>
+      <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 'var(--space-3) var(--space-4)' }}>
+        <span className="field-label" style={{ whiteSpace: 'nowrap', margin: 0 }}>Provider</span>
         <Select
           value={providerId}
           onChange={(v) => { setProviderId(v); refresh(v) }}
           options={providers.map((p) => ({ value: p.id, label: p.display_name }))}
           className="provider-filter"
         />
-        {error && <span className="mono" style={{ color: 'var(--fault)', fontSize: 'var(--fs-1)' }}>{error}</span>}
+        {error && <span className="mono" style={{ color: 'var(--red)', fontSize: 'var(--fs-1)' }}>{error}</span>}
       </div>
 
       <ModelForm
@@ -272,8 +277,8 @@ export function ModelsView() {
                 <th>Name</th>
                 <th>Model ID</th>
                 <th>Context</th>
-                <th>In</th>
-                <th>Out</th>
+                <th>In ($)</th>
+                <th>Out ($)</th>
                 <th>Capabilities</th>
                 <th>Status</th>
                 <th></th>
@@ -283,16 +288,21 @@ export function ModelsView() {
               {models.map((m) => (
                 <tr key={m.id}>
                   <td>
-                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}>{m.display_name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Cpu size={14} style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-strong)' }}>{m.display_name}</span>
+                    </div>
                   </td>
                   <td className="mono" style={{ color: 'var(--text-dim)' }}>{m.provider_model_id}</td>
-                  <td className="mono">{m.context_window ?? '—'}</td>
+                  <td className="mono">{m.context_window ? m.context_window.toLocaleString() : '—'}</td>
                   <td className="mono">{m.input_price ?? '—'}</td>
                   <td className="mono">{m.output_price ?? '—'}</td>
                   <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', maxWidth: 280 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: 280 }}>
                       {capabilityLabels.map(({ key, label }) => (
-                        <span key={key}>{label}</span>
+                        <span key={key} style={{ fontSize: '0.75rem', opacity: parseCapabilities(m.capabilities_json)[key] ? 1 : 0.4 }}>
+                          {label}
+                        </span>
                       ))}
                     </div>
                   </td>
@@ -304,9 +314,15 @@ export function ModelsView() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <Button onClick={() => handleEdit(m)}>Edit</Button>
+                      <Button onClick={() => handleEdit(m)}>
+                        <Edit3 size={13} style={{ marginRight: '4px' }} />
+                        Edit
+                      </Button>
                       <Button onClick={() => handleToggle(m)}>{m.enabled ? 'Disable' : 'Enable'}</Button>
-                      <Button variant="danger" onClick={() => setDeleting(m)}>Del</Button>
+                      <Button variant="danger" onClick={() => setDeleting(m)}>
+                        <Trash2 size={13} style={{ marginRight: '4px' }} />
+                        Del
+                      </Button>
                     </div>
                   </td>
                 </tr>
