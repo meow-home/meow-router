@@ -63,6 +63,8 @@ export function Button({
   disabled,
   children,
   title,
+  style,
+  className,
 }: {
   variant?: 'default' | 'primary' | 'live' | 'danger' | 'ghost'
   type?: 'button' | 'submit'
@@ -70,14 +72,17 @@ export function Button({
   disabled?: boolean
   children: ReactNode
   title?: string
+  style?: React.CSSProperties
+  className?: string
 }) {
   return (
     <button
       type={type}
-      className={classNames('btn', variant !== 'default' && `btn--${variant}`)}
+      className={classNames('btn', variant !== 'default' && `btn--${variant}`, className)}
       onClick={onClick}
       disabled={disabled}
       title={title}
+      style={style}
     >
       {children}
     </button>
