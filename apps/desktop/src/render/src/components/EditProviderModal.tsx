@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderRow, ProviderWithCredential, ProviderTypeDescriptor } from '@shared/ipc'
-import { Modal, Button, ErrorBanner } from './ui'
+import { BaseModal, Button, ErrorBanner } from './ui'
 import { ProviderFields } from './ProviderFields'
 
 export function EditProviderModal({
@@ -52,32 +52,39 @@ export function EditProviderModal({
   }
 
   return (
-    <Modal open={open} title="Edit Provider" width={480} onClose={onClose}>
+    <BaseModal open={open && !!provider} onClose={onClose} width={500}>
       {provider && (
         <>
-          <ProviderFields
-            types={types}
-            type={provider.type}
-            setType={() => {}}
-            typeLocked
-            displayName={displayName}
-            setDisplayName={setDisplayName}
-            baseUrl={baseUrl}
-            setBaseUrl={setBaseUrl}
-            keyValue={keyValue}
-            setKeyValue={setKeyValue}
-            keyPlaceholder={provider.hasCredential ? 'Leave blank to keep current key' : 'Enter API key'}
-            enabled={enabled}
-            setEnabled={setEnabled}
-            showEnabled
+          <BaseModal.Header
+            title="Edit Provider"
+            subtitle={`Update configuration for ${provider.display_name}`}
+            onClose={onClose}
           />
-          {error && <ErrorBanner>{error}</ErrorBanner>}
-          <div className="dialog-actions" style={{ marginTop: 12 }}>
+          <BaseModal.Body>
+            <ProviderFields
+              types={types}
+              type={provider.type}
+              setType={() => {}}
+              typeLocked
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              baseUrl={baseUrl}
+              setBaseUrl={setBaseUrl}
+              keyValue={keyValue}
+              setKeyValue={setKeyValue}
+              keyPlaceholder={provider.hasCredential ? 'Leave blank to keep current key' : 'Enter API key'}
+              enabled={enabled}
+              setEnabled={setEnabled}
+              showEnabled
+            />
+            {error && <ErrorBanner>{error}</ErrorBanner>}
+          </BaseModal.Body>
+          <BaseModal.Footer>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button variant="primary" onClick={handleSubmit} disabled={busy}>Save Provider</Button>
-          </div>
+          </BaseModal.Footer>
         </>
       )}
-    </Modal>
+    </BaseModal>
   )
 }

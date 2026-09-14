@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderRow, ProviderTypeDescriptor } from '@shared/ipc'
-import { Modal, Button, ErrorBanner } from './ui'
+import { BaseModal, Button, ErrorBanner } from './ui'
 import { ProviderFields } from './ProviderFields'
 
 export function AddProviderModal({
@@ -32,9 +32,6 @@ export function AddProviderModal({
     setBusy(false)
   }, [open, types])
 
-  // The display name follows the type until the user makes it their own: an
-  // empty field, or one still holding the outgoing type's name, is ours to
-  // overwrite. Clearing the field opts back into the default.
   function handleTypeChange(next: string) {
     const outgoingDefault = types.find((t) => t.id === type)?.displayName ?? ''
     if (displayName === '' || displayName === outgoingDefault) {
@@ -61,26 +58,33 @@ export function AddProviderModal({
   }
 
   return (
-    <Modal open={open} title="Add Provider" width={480} onClose={onClose}>
-      <ProviderFields
-        types={types}
-        type={type}
-        setType={handleTypeChange}
-        displayName={displayName}
-        setDisplayName={setDisplayName}
-        baseUrl={baseUrl}
-        setBaseUrl={setBaseUrl}
-        keyValue={keyValue}
-        setKeyValue={setKeyValue}
-        keyPlaceholder="API key"
-        enabled
-        setEnabled={() => {}}
+    <BaseModal open={open} onClose={onClose} width={500}>
+      <BaseModal.Header
+        title="Add Provider"
+        subtitle="Connect a new AI provider to route model completions"
+        onClose={onClose}
       />
-      {error && <ErrorBanner>{error}</ErrorBanner>}
-      <div className="dialog-actions" style={{ marginTop: 12 }}>
+      <BaseModal.Body>
+        <ProviderFields
+          types={types}
+          type={type}
+          setType={handleTypeChange}
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          baseUrl={baseUrl}
+          setBaseUrl={setBaseUrl}
+          keyValue={keyValue}
+          setKeyValue={setKeyValue}
+          keyPlaceholder="API key"
+          enabled
+          setEnabled={() => {}}
+        />
+        {error && <ErrorBanner>{error}</ErrorBanner>}
+      </BaseModal.Body>
+      <BaseModal.Footer>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" onClick={handleSubmit} disabled={busy}>Save Provider</Button>
-      </div>
-    </Modal>
+      </BaseModal.Footer>
+    </BaseModal>
   )
 }
