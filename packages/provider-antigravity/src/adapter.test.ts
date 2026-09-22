@@ -294,6 +294,148 @@ describe('AntigravityAdapter', () => {
     expect(props.value).toEqual({ nullable: true })
   })
 
+  it('rewrites tool schemas for Claude models so they pass Anthropic strict draft-2020-12 validation', async () => {
+    // Regression: for Claude models the Cloud Code Assist backend forwards tool
+    // `input_schema` to Anthropic, which validates it in strict JSON Schema
+    // draft-2020-12 mode. Gemini-only keywords (`nullable`, `example`,
+    // `propertyOrdering`) leaked through `sanitizeSchema` and were rejected with
+    // "JSON schema is invalid. It must match JSON Schema draft 2020-12".
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'claude-opus-4-6-thinking',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'mcp__pms__search',
+          description: 'Search',
+          parameters: {
+            type: 'object',
+            propertyOrdering: ['assigned_to_id'],
+            properties: {
+              assigned_to_id: { type: ['number', 'null'], example: 1, description: 'Assignee id' },
+              format_prop: { type: 'string', format: 'email' }
+            },
+            required: ['format_prop']
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    // Gemini-only keywords must be gone.
+    expect('propertyOrdering' in params).toBe(false)
+    const props = params.properties as Record<string, Record<string, unknown>>
+    const assigned = props.assigned_to_id
+    expect('nullable' in assigned).toBe(false)
+    expect('example' in assigned).toBe(false)
+    // nullable type array -> flattened to the non-null branch's type.
+    expect('anyOf' in assigned).toBe(false)
+    expect(assigned.type).toBe('number')
+    expect(assigned.description).toBe('Assignee id')
+    // `format` and standard keywords survive.
+    expect(props.format_prop).toEqual({ type: 'string', format: 'email' })
+  })
+
+  it('flattens anyOf unions (e.g. boolean|number) for Claude models', async () => {
+    // Regression: the Cloud Code Assist backend forwards tool input_schema to
+    // Anthropic on Vertex AI, but Anthropic's tool schema validator rejects
+    // `anyOf` with 400 "JSON schema is invalid. It must match JSON Schema
+    // draft 2020-12." The `monitor` tool publishes
+    // `until_exit: { anyOf: [{ type: 'boolean' }, { type: 'number' }] }`,
+    // which broke every request. The adapter must flatten `anyOf` to the first
+    // non-null branch so the schema stays Anthropic-compatible.
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'claude-opus-4-6-thinking',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'monitor',
+          parameters: {
+            type: 'object',
+            properties: {
+              until_exit: { anyOf: [{ type: 'boolean' }, { type: 'number' }], description: 'resolve when shell exits' },
+              id: { type: 'string' }
+            }
+          }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    const props = params.properties as Record<string, Record<string, unknown>>
+    // anyOf must be flattened to the first non-null branch.
+    expect('anyOf' in props.until_exit).toBe(false)
+    expect(props.until_exit.type).toBe('boolean')
+    expect(props.until_exit.description).toBe('resolve when shell exits')
+    expect(props.id).toEqual({ type: 'string' })
+  })
+
+  it('leaves tool schemas unchanged for non-Claude (Gemini) models', async () => {
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = {
+      model: 'gemini-2.5-pro',
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'search',
+          parameters: { type: 'object', properties: { id: { type: ['number', 'null'], example: 1 }, p: { type: 'string' } }, propertyOrdering: ['id'] }
+        }
+      }],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as {
+      request: { tools?: Array<{ functionDeclarations: Array<{ parameters: Record<string, unknown> }> }> }
+    }
+    const params = body.request.tools![0].functionDeclarations[0].parameters
+    const props = params.properties as Record<string, Record<string, unknown>>
+    // Gemini path keeps the nullable/example/propertyOrdering keywords.
+    expect(props.id).toEqual({ type: 'number', nullable: true, example: 1 })
+    expect('propertyOrdering' in params).toBe(true)
+  })
+
   it('inlines a local $ref instead of emptying the schema', async () => {
     // katalon-docs publishes `$defs` + `$ref` (e.g. `items: { $ref: '#/$defs/KatalonProduct' }`).
     // Dropping both keys left an empty schema and lost the enum the model needs

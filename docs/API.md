@@ -40,7 +40,7 @@ Returns:
 ```json
 {
   "status": "ok",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "gateway": {
     "running": true
   }

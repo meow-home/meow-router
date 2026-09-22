@@ -87,22 +87,90 @@ function sanitizeSchema(value: unknown, root: unknown = value, seenRefs: Readonl
   return out
 }
 
+// When the target model is a Claude family model, the Cloud Code Assist
+// backend forwards tool `input_schema` to Anthropic, which validates it in
+// strict JSON Schema draft 2020-12 mode. Keywords that are valid for Gemini
+// (`nullable`, `example`, `propertyOrdering`) are rejected there, so the
+// sanitized schema needs a second pass to comply.
+function isClaudeModel(model: string): boolean {
+  return model.toLowerCase().includes('claude')
+}
+
+// JSON Schema keywords that Gemini understands but Anthropic's strict
+// draft-2020-12 validator does not.
+const ANTHROPIC_REJECTED_KEYS = new Set(['nullable', 'example', 'propertyOrdering'])
+
+// Picks the first branch of an `anyOf` that has a concrete `type`, preferring
+// non-null branches. The Cloud Code Assist backend that forwards tool schemas
+// to Anthropic on Vertex AI does not handle `anyOf` reliably — a tool whose
+// property uses `anyOf` (e.g. `monitor.until_exit: anyOf(boolean, number)`)
+// is rejected wholesale with 400 "JSON schema is invalid. It must match JSON
+// Schema draft 2020-12." Flattening to the first concrete type loses some
+// type information but keeps the tool callable.
+function flattenAnyOf(branches: unknown[]): Record<string, unknown> {
+  const isNull = (s: unknown) => typeof s === 'object' && s !== null && (s as Record<string, unknown>).type === 'null'
+  const nonNull = branches.filter((b) => !isNull(b))
+  const pick = nonNull[0] ?? branches[0]
+  if (pick && typeof pick === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(pick as Record<string, unknown>)) out[k] = v
+    return out
+  }
+  return {}
+}
+
+// Rewrites a Gemini-valid sanitized schema so it also passes Anthropic's
+// strict draft-2020-12 validation. `nullable: true` is dropped (the field is
+// optional in practice); `example` and `propertyOrdering` are removed; and
+// `anyOf` unions — which the Cloud Code Assist backend does not forward
+// reliably to Anthropic — are flattened to their first non-null branch.
+function toDraft2020Strict(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(toDraft2020Strict)
+  if (!schema || typeof schema !== 'object') return schema
+  const obj = schema as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'nullable' || ANTHROPIC_REJECTED_KEYS.has(k)) continue
+    if (k === 'anyOf' && Array.isArray(v)) {
+      const flattened = flattenAnyOf(v)
+      // Merge the flattened branch's keys into the current object instead of
+      // nesting under `anyOf`. If the branch had `type`, it becomes this
+      // schema's `type`.
+      for (const [fk, fv] of Object.entries(flattened)) out[fk] = fv
+      continue
+    }
+    if (k === 'properties' && v && typeof v === 'object') {
+      const props: Record<string, unknown> = {}
+      for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) props[pk] = toDraft2020Strict(pv)
+      out[k] = props
+    } else if (k === 'items') {
+      out[k] = toDraft2020Strict(v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 // Translates OpenAI-format tools (`[{ type: 'function', function: { name,
 // description, parameters } }]`) into the Gemini/Antigravity `functionDeclarations`
 // shape. The Cloud Code Assist API only understands `tools: [{ functionDeclarations:
 // [{ name, description, parameters }] }]`; without it the model is never told
 // about the tools and never emits a functionCall.
-function translateTools(tools: unknown[]): unknown[] {
+function translateTools(tools: unknown[], model: string): unknown[] {
   const declarations: unknown[] = []
   for (const t of tools) {
     if (!t || typeof t !== 'object') continue
     const obj = t as { type?: string; function?: { name?: string; description?: string; parameters?: unknown } }
     const fn = obj.function
     if (!fn || typeof fn.name !== 'string') continue
+    const parameters = fn.parameters ? sanitizeSchema(fn.parameters) : undefined
     declarations.push({
       name: fn.name,
       ...(fn.description ? { description: fn.description } : {}),
-      ...(fn.parameters ? { parameters: sanitizeSchema(fn.parameters) } : {})
+      ...(parameters !== undefined
+        ? { parameters: isClaudeModel(model) ? toDraft2020Strict(parameters) : parameters }
+        : {})
     })
   }
   return declarations.length > 0 ? [{ functionDeclarations: declarations }] : []
@@ -465,7 +533,7 @@ export class AntigravityAdapter implements ProviderAdapter {
         contents,
         session_id: 'sess_' + randomUUID().slice(0, 8),
         systemInstruction: systemInstruction ?? { parts: [{ text: ANTIGRAVITY_SYSTEM_PROMPT }] },
-        ...(request.tools && request.tools.length > 0 ? { tools: translateTools(request.tools) } : {}),
+        ...(request.tools && request.tools.length > 0 ? { tools: translateTools(request.tools, request.model) } : {}),
         ...(request.toolChoice ? { toolConfig: translateToolChoice(request.toolChoice) } : {}),
         generationConfig: {
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
@@ -481,6 +549,23 @@ export class AntigravityAdapter implements ProviderAdapter {
     for (const base of this.baseUrlsToTry(ctx)) {
       let res
       try {
+        // Diagnostic: log translated tool declaration shapes (name + parameter
+        // keys only, never values) to identify which tool's input_schema fails
+        // Anthropic strict draft-2020-12 validation. Remove once stable.
+        if (body.request?.tools) {
+          const decls = (body.request.tools as Array<{ functionDeclarations?: Array<{ name?: string; parameters?: Record<string, unknown> }> }>)
+            .flatMap((t) => t.functionDeclarations ?? [])
+          this.log('translated tool shapes', {
+            model: request.model,
+            count: decls.length,
+            decls: decls.map((d) => ({ name: d.name, paramKeys: Object.keys(d.parameters ?? {}), schema: d.parameters }))
+          })
+          // Dump the full JSON of each tool declaration so we can see exactly
+          // what Anthropic receives. Remove once stable.
+          for (const d of decls) {
+            this.log('tool declaration json', { name: d.name, json: JSON.stringify(d) })
+          }
+        }
         this.log('stream request', { base, model: request.model, projectId })
         res = await this.fetcher(joinUrl(base, STREAM_PATH), {
           method: 'POST',
