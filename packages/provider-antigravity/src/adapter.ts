@@ -558,6 +558,15 @@ export class AntigravityAdapter implements ProviderAdapter {
       }
     }
 
+    // Diagnostic: log whether thinkingConfig is present in the request.
+    // Remove once the reasoning pipeline is confirmed working end-to-end.
+    this.log('generationConfig shape', {
+      model: request.model,
+      isGemini: isGeminiModel(request.model),
+      hasThinkingConfig: Boolean(body.request?.generationConfig && 'thinkingConfig' in body.request.generationConfig),
+      thinkingBudget: (body.request?.generationConfig as Record<string, unknown>)?.thinkingConfig
+    })
+
     // Try each base URL in order. The primary endpoint can intermittently 5xx;
     // falling back to the next base URL avoids surfacing a spurious
     // PROVIDER_UNAVAILABLE when a sibling endpoint is healthy.
