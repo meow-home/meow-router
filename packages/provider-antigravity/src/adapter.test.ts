@@ -774,6 +774,41 @@ describe('AntigravityAdapter', () => {
     expect(finishes).toHaveLength(1)
     expect(finishes[0].finishReason).toBe('stop')
   })
+  it('sends thinkingConfig for gemini models so reasoning parts are returned', async () => {
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = { model: 'gemini-2.5-flash', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as { request: { generationConfig?: { thinkingConfig?: { thinkingBudget?: number } } } }
+    expect(body.request.generationConfig?.thinkingConfig).toEqual({ thinkingBudget: 8192 })
+  })
+
+  it('does NOT send thinkingConfig for non-gemini models (e.g. claude)', async () => {
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = { model: 'claude-opus-4-6-thinking', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
+    await collect(adapter.chat(ctx(), req))
+
+    const body = JSON.parse(sentBody!) as { request: { generationConfig?: { thinkingConfig?: unknown } } }
+    expect(body.request.generationConfig?.thinkingConfig).toBeUndefined()
+  })
 })
 
 describe('AntigravityAdapter.getQuota', () => {

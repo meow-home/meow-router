@@ -16,6 +16,14 @@ function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path
 }
 
+// Returns true for Gemini model ids that support chain-of-thought thinking.
+// These models can return `thought: true` parts when `thinkingConfig` is set
+// in `generationConfig`. Non-Gemini models routed through Antigravity (e.g.
+// claude-*) do not support this parameter and must not receive it.
+function isGeminiModel(modelId: string): boolean {
+  return modelId.startsWith('gemini-')
+}
+
 // The Gemini `Schema` accepts only a subset of OpenAPI 3.0 / JSON Schema
 // keywords. Clients (e.g. the AI SDK) send full JSON Schema in `parameters`
 // including `$schema`, `exclusiveMinimum`, `additionalProperties`, etc., which
@@ -537,7 +545,15 @@ export class AntigravityAdapter implements ProviderAdapter {
         ...(request.toolChoice ? { toolConfig: translateToolChoice(request.toolChoice) } : {}),
         generationConfig: {
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
-          ...(request.maxTokens && request.maxTokens > 0 ? { maxOutputTokens: request.maxTokens } : {})
+          ...(request.maxTokens && request.maxTokens > 0 ? { maxOutputTokens: request.maxTokens } : {}),
+          // Enable thinking for Gemini models that support chain-of-thought.
+          // The Cloud Code Assist API does not return thought parts unless
+          // thinkingConfig is explicitly set in generationConfig. Without it
+          // reasoning-capable models (gemini-2.5-flash, gemini-2.5-pro, etc.)
+          // produce no reasoning_delta chunks and the client sees no thinking
+          // step. Budget of 8192 tokens is a reasonable default that covers
+          // most agentic coding tasks without consuming excessive quota.
+          ...(isGeminiModel(request.model) ? { thinkingConfig: { thinkingBudget: 8192 } } : {})
         }
       }
     }
