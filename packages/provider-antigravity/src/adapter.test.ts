@@ -634,6 +634,55 @@ describe('AntigravityAdapter', () => {
     expect(userPart.functionResponse).toMatchObject({ name: 'get_weather', id: emitted!.id })
   })
 
+  it('recovers the thoughtSignature when the client replaces the tool-call id (Gemini rejects a resent functionCall without it)', async () => {
+    // Regression: the adapter used to stash the Gemini thoughtSignature inside
+    // the tool-call id it emitted (`call_<n>_ts_<sig>`). OpenAI-compatible
+    // clients (Meow Coding, Claude Code, the AI SDK) do not preserve that id —
+    // they mint their own (`call_00y4i28p`). On the next turn the adapter saw
+    // an unknown id, dropped the signature, and the Cloud Code Assist API
+    // rejected every tool round-trip with 400 INVALID_ARGUMENT
+    // ("Function call is missing a thought_signature in functionCall parts").
+    // The signature must therefore survive independently of the client id.
+    const sse = [
+      'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig-abc","functionCall":{"name":"get_weather","args":{"city":"SF"}}}]}}]}}',
+      'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}',
+      'data: [DONE]'
+    ].join('\n\n') + '\n\n'
+    let sentBody: string | undefined
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: sse }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      return { ok: false, status: 404, text: '' }
+    })
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+
+    // Turn 1: model returns a functionCall carrying a thoughtSignature.
+    await collect(adapter.chat(ctx(), { model: 'gemini-2.5-flash', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }))
+
+    // Turn 2: the client echoes the call with a DIFFERENT id (as real clients
+    // do) plus the tool result. The signature must still be re-attached.
+    const req = {
+      model: 'gemini-2.5-flash',
+      messages: [
+        { role: 'user' as const, content: 'hi' },
+        { role: 'assistant' as const, content: null, toolCalls: [{ id: 'call_00y4i28p', function: { name: 'get_weather', arguments: '{"city":"SF"}' } }] },
+        { role: 'tool' as const, content: 'sunny', toolCallId: 'call_00y4i28p' }
+      ],
+      stream: true
+    }
+    await collect(adapter.chat(ctx(), req))
+    const body = JSON.parse(sentBody!) as {
+      request: { contents: Array<{ role: string; parts: Array<{ thoughtSignature?: string; functionCall?: { name?: string; args?: unknown; id?: string } }> }> }
+    }
+    const modelPart = body.request.contents.find((c) => c.role === 'model')!.parts.find((p) => p.functionCall)!
+    expect(modelPart.thoughtSignature).toBe('sig-abc')
+    // The client's own id must be preserved so the functionResponse pairs up.
+    expect(modelPart.functionCall?.id).toBe('call_00y4i28p')
+  })
+
   it('sends tool_call ids in functionCall/functionResponse so a client-issued id survives the round-trip', async () => {
     // Regression: for Claude models the Cloud Code Assist backend translates
     // Gemini functionCall parts into Anthropic tool_use blocks, and

@@ -203,6 +203,19 @@ Non-secret configuration may be stored in application data.
 
 Secrets must use OS secure storage.
 
+## 9a. Diagnostics logging
+
+The main process writes provider/gateway diagnostics to
+`<userData>/logs/gateway.log` via `createFileLogger` (in addition to the
+console, which is invisible in a packaged Windows app). This is what makes an
+upstream rejection diagnosable after the fact: the Antigravity adapter logs the
+real provider error body (`[antigravity] non-ok status 400 ... body=...`) while
+the persisted `request_usage` row keeps only the generic
+"Antigravity request rejected.".
+
+The logger is best-effort — a write failure never breaks a request — and must
+never receive credentials, authorization headers or request bodies.
+
 ## 10. Extensibility
 
 Adding a provider should require:

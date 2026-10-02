@@ -133,9 +133,25 @@ key. Antigravity is the first such provider.
   `functionCall` part to carry its `thoughtSignature` when it is resent in a
   multi-turn history; omitting it yields `400 INVALID_ARGUMENT` ("Function call
   is missing a thought_signature in functionCall parts"). The adapter stashes
-  the signature in the OpenAI tool-call `id` it emits to the client and recovers
-  it when the client echoes that id back in an assistant `tool_calls`/tool
-  `tool_call_id`, so the round-trip works without any client-side change.
+  the signature in the OpenAI tool-call `id` it emits (`call_<n>_ts_<sig>`) and
+  recovers it when the client echoes that id back in an assistant
+  `tool_calls`/tool `tool_call_id`.
+  - OpenAI-compatible clients do **not** preserve that id: Meow Coding, Claude
+    Code and the AI SDK mint their own (`call_00y4i28p`). Relying on the id
+    alone therefore dropped the signature on the second turn and rejected
+    *every* tool round-trip with the 400 above. The adapter also remembers the
+    signature per `(function name + arguments)` in a bounded LRU cache
+    (`ThoughtSignatureCache`), which identifies the call regardless of the id
+    the client chooses. The id-stash remains as a first choice so clients that
+    do preserve it keep working.
+  - Claude-family models are the mirror image: they require the `id` on the
+    `functionCall`/`functionResponse` pair but do **not** require a
+    `thoughtSignature`. The adapter always echoes the client's id, so both
+    families round-trip.
+  - Note: the signature is bound to the model turn that produced it. A client
+    that rewrites the assistant's `arguments` before echoing them back (rather
+    than replaying the call verbatim) will miss the cache; replaying the emitted
+    call unchanged is the supported path.
 - **Tool declarations**: OpenAI-format `tools`/`tool_choice` are translated to
   Gemini `tools: [{ functionDeclarations }]` and `toolConfig.functionCallingConfig`
   so the model is told about the available tools and can emit `functionCall`

@@ -8,6 +8,7 @@
 
 import { app, ipcMain, safeStorage, clipboard } from 'electron'
 import { join } from 'node:path'
+import { createFileLogger } from './fileLogger'
 import { openDatabase, closeDatabase, type PersistedConnection } from '../database/connection'
 import {
   ProviderRepository,
@@ -81,6 +82,11 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
   const filePath = dbPath ?? join(app.getPath('userData'), 'meow-gateway.sqlite')
   const db = await openDatabase(filePath)
 
+  // Provider/gateway diagnostics go to a file as well as the (invisible in a
+  // packaged app) console, so an upstream rejection can be diagnosed after the
+  // fact. Never logs credentials, headers or request bodies.
+  const logger = createFileLogger({ filePath: join(app.getPath('userData'), 'logs', 'gateway.log') })
+
   const providerRepo = new ProviderRepository(db)
   const accountRepo = new AccountRepository(db)
   const modelRepo = new ModelRepository(db)
@@ -122,7 +128,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     config: OAUTH_CLIENT_FOR_TYPE['antigravity'],
     store: oauthTokenStore
   })
-  const antigravityAdapter = createAntigravityAdapter('antigravity', { tokenManager: oauthManager })
+  const antigravityAdapter = createAntigravityAdapter('antigravity', { tokenManager: oauthManager, logger })
   registry.register(antigravityAdapter)
 
   const codexManager = new OAuthTokenManager({
@@ -141,7 +147,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     tokenManager: oauthManager,
     providerRepo,
     getCredential: (ref) => credentials.getCredential(ref),
-    logger: console
+    logger
   })
   quotaService.start()
 
@@ -170,7 +176,7 @@ export async function bootstrapMeowGatewayApp(dbPath?: string): Promise<MeowGate
     listModels: () => virtualModels.listModels(),
     recordUsage: (u) => usage.recordUsage(u),
     getAuthPolicy: () => authPolicy.get(),
-    logger: console // Electron main: minimal console logger
+    logger // Electron main: file + console diagnostics
   }
 
   // Configure the listener port from gateway_config if present, else default.

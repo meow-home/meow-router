@@ -239,13 +239,60 @@ function decodeToolCallId(id: string): { index: number; thoughtSignature?: strin
   return { index: Number(m[1]), thoughtSignature }
 }
 
+// OpenAI-compatible clients do NOT preserve the tool-call id the adapter emits:
+// Meow Coding, Claude Code and the AI SDK all mint their own id (`call_00y4i28p`)
+// before echoing the assistant turn back. Stashing the Gemini
+// `thoughtSignature` in that id therefore loses it on the second turn, and the
+// Cloud Code Assist API rejects every tool round-trip with 400 INVALID_ARGUMENT
+// ("Function call is missing a thought_signature in functionCall parts").
+//
+// The signature is instead remembered per (function name + arguments), which is
+// what identifies a call across the round-trip regardless of the id the client
+// chooses. The map is per adapter instance (one provider type) and bounded so a
+// long-lived process cannot grow it without limit.
+const SIGNATURE_CACHE_MAX = 500
+
+function signatureKey(name: string, args: unknown): string {
+  let serialized: string
+  try {
+    serialized = JSON.stringify(args ?? {})
+  } catch {
+    serialized = '{}'
+  }
+  return `${name}\u0000${serialized}`
+}
+
+export class ThoughtSignatureCache {
+  private readonly entries = new Map<string, string>()
+
+  remember(name: string, args: unknown, signature: string | undefined): void {
+    if (!signature) return
+    const key = signatureKey(name, args)
+    // Refresh recency so the bounded eviction drops the least recently used.
+    this.entries.delete(key)
+    this.entries.set(key, signature)
+    while (this.entries.size > SIGNATURE_CACHE_MAX) {
+      const oldest = this.entries.keys().next().value
+      if (oldest === undefined) break
+      this.entries.delete(oldest)
+    }
+  }
+
+  get(name: string, args: unknown): string | undefined {
+    return this.entries.get(signatureKey(name, args))
+  }
+}
+
 // Converts provider-neutral (OpenAI-style) messages into the Gemini/Antigravity
 // `contents` shape. The Cloud Code Assist API only accepts `user` and `model`
 // roles in contents: `system` goes into `systemInstruction`, `assistant` maps to
 // `model`, and `tool` results become a `user` message carrying a
 // `functionResponse`. Sending OpenAI roles verbatim makes the server reject the
 // request with 400 INVALID_ARGUMENT.
-function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
+function toAntigravityContents(
+  messages: NormalizedChatRequest['messages'],
+  signatures?: ThoughtSignatureCache
+): {
   contents: AntigravityContent[]
   systemInstruction?: { parts: AntigravityPart[] }
 } {
@@ -281,12 +328,15 @@ function toAntigravityContents(messages: NormalizedChatRequest['messages']): {
             } else if (fn.arguments && typeof fn.arguments === 'object') {
               args = fn.arguments as Record<string, unknown>
             }
-            // Recover the Gemini thoughtSignature we stashed in the tool-call
-            // id (see encodeToolCallId). The Cloud Code Assist API requires a
-            // `functionCall` part to carry its `thoughtSignature` when it is
-            // resent in a multi-turn history; omitting it yields 400
-            // INVALID_ARGUMENT.
-            const { thoughtSignature } = t.id ? decodeToolCallId(t.id) : { thoughtSignature: undefined }
+            // Recover the Gemini thoughtSignature. It is normally stashed in
+            // the tool-call id (see encodeToolCallId), but clients replace that
+            // id with their own, so fall back to the (name + args) cache the
+            // adapter populated when it streamed the call. The Cloud Code
+            // Assist API requires a `functionCall` part to carry its
+            // `thoughtSignature` when it is resent in a multi-turn history;
+            // omitting it yields 400 INVALID_ARGUMENT.
+            const fromId = t.id ? decodeToolCallId(t.id).thoughtSignature : undefined
+            const thoughtSignature = fromId ?? signatures?.get(name, args)
             // The Cloud Code Assist backend translates Gemini `functionCall`
             // parts into Anthropic `tool_use` blocks for Claude models, and
             // `tool_use.id` is REQUIRED there. Echo the id from the client's
@@ -368,6 +418,9 @@ export class AntigravityAdapter implements ProviderAdapter {
   private readonly tokenManager?: OAuthTokenManager
   private readonly fallbackModels: string[]
   private readonly logger: Pick<Console, 'log' | 'warn' | 'error'>
+  // Remembers Gemini thoughtSignatures across turns, keyed by (name + args),
+  // so a client that replaces the tool-call id cannot strip them.
+  private readonly signatures = new ThoughtSignatureCache()
 
   constructor(id: string = antigravityMetadata.id, opts: AntigravityAdapterOptions = {}) {
     this.id = id
@@ -525,7 +578,7 @@ export class AntigravityAdapter implements ProviderAdapter {
     const { accessToken, bundle } = await this.resolveAuth(ctx)
     const projectId = await this.resolveProject(ctx, accessToken, bundle)
     const id = 'req_' + randomUUID()
-    const { contents, systemInstruction } = toAntigravityContents(request.messages)
+    const { contents, systemInstruction } = toAntigravityContents(request.messages, this.signatures)
     // Diagnostic: log the request contents structure (roles + part keys only,
     // never content) to debug the tool-call round-trip 400. Remove once stable.
     this.log('request contents shape', {
@@ -746,12 +799,14 @@ export class AntigravityAdapter implements ProviderAdapter {
           // text. Emit it as a tool_call_delta so the client sees the call
           // rather than an empty completion. `args` is an object; serialize it.
           // The Gemini `thoughtSignature` (if present) is stashed in the
-          // tool-call id so it survives the OpenAI round-trip and can be
-          // re-attached when the client resends the call (see
-          // encodeToolCallId / toAntigravityContents).
+          // tool-call id AND remembered by (name + args), because clients
+          // replace the id with their own and the signature would otherwise be
+          // lost on the next turn (see encodeToolCallId / ThoughtSignatureCache
+          // / toAntigravityContents).
           const fc = part['functionCall'] as { name?: string; args?: Record<string, unknown> } | undefined
           if (fc && typeof fc.name === 'string') {
             const thoughtSignature = typeof part['thoughtSignature'] === 'string' ? part['thoughtSignature'] : undefined
+            this.signatures.remember(fc.name, fc.args ?? {}, thoughtSignature)
             toolCalls.push({
               index: toolCalls.length,
               id: encodeToolCallId(toolCalls.length, thoughtSignature),
