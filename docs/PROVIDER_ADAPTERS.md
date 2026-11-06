@@ -169,6 +169,22 @@ key. Antigravity is the first such provider.
   - a local `$ref` (`#/$defs/<name>`) is inlined, so a referenced enum survives
     instead of collapsing to an empty schema; a reference that repeats while it
     is being expanded (a recursive schema) is dropped.
+- **Images / vision**: Gemini takes images as `inlineData: { mimeType, data }`
+  parts; it has no URL image form. The adapter therefore maps every image shape
+  a client may send — OpenAI `image_url` (object or string), Responses
+  `input_image`, Anthropic `image` blocks — onto an `inlineData` part:
+  - `data:` URLs are decoded locally and never touch the network;
+  - `http(s)://` URLs are downloaded and base64-encoded (the fetcher must expose
+    `arrayBuffer()`; `defaultFetcher` does), SSRF-guarded with the same rules as
+    a custom provider endpoint, and capped at 10 MiB per image. The mime type is
+    sniffed from the magic bytes, falling back to `Content-Type`;
+  - images returned by a tool are emitted as sibling parts of the
+    `functionResponse` user turn, because `functionResponse.response` can only
+    carry JSON.
+  Content that is not an array is handled as plain text; a content array is
+  never stringified (that used to send the literal `"[object Object]"` to the
+  model, which is why vision worked in Antigravity's own UI but not through the
+  gateway).
 - The gateway itself is provider-neutral and treats an OAuth provider like any
   other: it reads the credential at `provider:<id>` and dispatches through the
   adapter, so `gateway/server.ts` requires no special-casing.

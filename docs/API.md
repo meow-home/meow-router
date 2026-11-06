@@ -93,6 +93,40 @@ Example:
 }
 ```
 
+### Image input (vision)
+
+`content` may be a string or an array of content parts, exactly like the OpenAI
+API. Image parts are supported and reach the provider as images:
+
+```json
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "What is in this screenshot?" },
+        { "type": "image_url", "image_url": { "url": "data:image/png;base64,iVBORw0KGgo..." } }
+      ]
+    }
+  ]
+}
+```
+
+- `image_url.url` accepts a `data:` URL (base64 or URL-encoded) or an
+  `http(s)://` URL.
+- `input_image` (OpenAI Responses style, `image_url` as a plain string) and the
+  Anthropic `{ "type": "image", "source": { ... } }` block are accepted too.
+- `data:` URLs are forwarded without any network access. Remote URLs are
+  downloaded by the adapter and inlined, because some providers (Gemini via
+  Antigravity) have no URL image form. Downloads are SSRF-guarded: loopback,
+  private, link-local and cloud-metadata hosts are rejected, redirects are not
+  followed, and a single image is capped at 10 MiB.
+- Images inside a `tool` message are forwarded as sibling parts of the
+  `functionResponse` turn.
+- Model capabilities expose `vision`; the gateway does not silently drop an
+  image when the selected model has none — the provider rejects it.
+
 ## POST /v1/messages (Anthropic Messages API)
 
 Anthropic-native clients (e.g. Claude Code) talk to the gateway over the
@@ -112,6 +146,11 @@ Input accepts the common Anthropic Messages subset:
 - tools
 - tool_choice
 - stop_sequences
+
+`image` blocks (`source.type` = `base64` or `url`) are preserved: they are
+translated into the provider-neutral `image_url` part instead of being dropped,
+so a vision request sent through Claude Code reaches the provider with the image
+attached. The same applies to images inside a `tool_result` block.
 
 Example:
 

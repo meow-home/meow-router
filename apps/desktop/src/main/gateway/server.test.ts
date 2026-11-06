@@ -218,6 +218,44 @@ describe('chat completions (T304)', () => {
     }
   })
 
+  it('forwards image content parts to the provider untouched (vision requests)', async () => {
+    // Regression guard for the gateway boundary: content-part arrays must reach
+    // the adapter as-is. Adapters are responsible for mapping image parts onto
+    // their provider wire format (see the Antigravity adapter's inlineData).
+    let received: NormalizedChatRequest | undefined
+    const recording: ProviderAdapter = {
+      id: 'openai',
+      async getModels() {
+        return []
+      },
+      async validateCredentials() {
+        return { ok: true, message: 'ok' }
+      },
+      async *chat(_ctx: unknown, request: NormalizedChatRequest) {
+        received = request
+        yield { id: 'c1', kind: 'content_delta', delta: 'ok' }
+        yield { id: 'c1', kind: 'finish', finishReason: 'stop' }
+      }
+    }
+    const harness = makeHarness({ adapter: recording })
+    const { server, addr } = await startServer(harness.deps)
+    const content = [
+      { type: 'text', text: 'describe this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aGVsbG8=' } }
+    ]
+    try {
+      const { status } = await fetchJson(`http://${addr.host}:${addr.port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content }] })
+      })
+      expect(status).toBe(200)
+      expect(received?.messages[0].content).toEqual(content)
+    } finally {
+      await server.stop()
+    }
+  })
+
   it('unknown model returns MODEL_NOT_FOUND', async () => {
     const harness = makeHarness()
     const { server, addr } = await startServer(harness.deps)

@@ -148,6 +148,79 @@ describe('anthropicToNormalized', () => {
     ])
     expect(req.toolChoice).toEqual({ type: 'function', function: { name: 'get_weather' } })
   })
+
+  // Regression: `blockText()` kept only text blocks, so an Anthropic `image`
+  // block was silently dropped and the model answered as if no image had been
+  // attached at all.
+  it('keeps a base64 image block as an OpenAI-style image part', () => {
+    const req = anthropicToNormalized({
+      model: 'm',
+      max_tokens: 10,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is in this picture?' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' } }
+        ]
+      }]
+    })
+    expect(req.messages[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is in this picture?' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,aGVsbG8=' } }
+      ]
+    })
+  })
+
+  it('keeps a URL image block as an image part', () => {
+    const req = anthropicToNormalized({
+      model: 'm',
+      max_tokens: 10,
+      messages: [{
+        role: 'user',
+        content: [{ type: 'image', source: { type: 'url', url: 'https://images.example.com/cat.png' } }]
+      }]
+    })
+    expect(req.messages[0].content).toEqual([
+      { type: 'image_url', image_url: { url: 'https://images.example.com/cat.png' } }
+    ])
+  })
+
+  it('leaves text-only block arrays as plain strings', () => {
+    const req = anthropicToNormalized({
+      model: 'm',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }]
+    })
+    expect(req.messages[0].content).toBe('a\nb')
+  })
+
+  it('keeps images inside a tool_result block', () => {
+    const req = anthropicToNormalized({
+      model: 'm',
+      max_tokens: 10,
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call_1',
+          content: [
+            { type: 'text', text: 'screenshot' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'aGVsbG8=' } }
+          ]
+        }]
+      }]
+    })
+    expect(req.messages[0]).toEqual({
+      role: 'tool',
+      toolCallId: 'call_1',
+      content: [
+        { type: 'text', text: 'screenshot' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,aGVsbG8=' } }
+      ]
+    })
+  })
 })
 
 describe('anthropicStopReason', () => {

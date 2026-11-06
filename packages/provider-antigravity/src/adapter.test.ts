@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createAntigravityAdapter } from './adapter'
 import { defineAdapterContractTests, type AdapterContractHost } from '@meow-gateway/provider-core'
-import type { ProviderContext } from '@meow-gateway/provider-core'
+import type { NormalizedChatRequest, ProviderContext } from '@meow-gateway/provider-core'
 import { OAuthTokenManager, type Fetcher, type OAuthTokenStore, type OAuthTokenBundle } from '@meow-gateway/oauth-core'
 import { ANTIGRAVITY_OAUTH_CLIENT } from './metadata'
 
@@ -26,19 +26,32 @@ function ctx(overrides?: Partial<ProviderContext>): ProviderContext {
   }
 }
 
-function fetcherFor(handler: (url: string, init: Parameters<Fetcher>[1]) => Promise<{ ok: boolean; status: number; text: string }>): Fetcher {
+function fetcherFor(
+  handler: (
+    url: string,
+    init: Parameters<Fetcher>[1]
+  ) => Promise<{ ok: boolean; status: number; text: string; bytes?: Uint8Array; contentType?: string }>
+): Fetcher {
   return async (url, init) => {
     const r = await handler(String(url), init)
+    const bytes = r.bytes ?? new TextEncoder().encode(r.text)
     return {
       ok: r.ok,
       status: r.status,
-      headers: { get: () => 'text/event-stream' },
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === 'content-type' ? r.contentType ?? 'text/event-stream' : null
+      },
       text: async () => r.text,
       json: async () => ({}),
-      body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(r.text)); c.close() } })
+      arrayBuffer: async () => bytes.slice().buffer,
+      body: new ReadableStream<Uint8Array>({ start(c) { c.enqueue(bytes); c.close() } })
     } as never
   }
 }
+
+// 8-byte PNG signature plus padding: enough for magic-byte sniffing.
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d])
 
 const streamingFetcher = fetcherFor(async (url) => {
   const u = String(url)
@@ -124,6 +137,178 @@ describe('AntigravityAdapter', () => {
     expect(contents[2].parts[0].functionResponse).toEqual({ name: 'get_weather', id: 'call_1', response: { result: 'sunny' } })
     // system prompt merged into systemInstruction
     expect(body.request.systemInstruction?.parts[0].text).toBe('be helpful')
+  })
+
+  // --- Vision / image input ---------------------------------------------------
+  //
+  // Regression: user content used to be passed through `String(content)`, so an
+  // OpenAI-style content-part array (text + image_url) reached Gemini as the
+  // literal text "[object Object]" and the model never saw the image. Vision
+  // worked in Antigravity's own UI (which sends native inlineData parts) but
+  // never through the gateway.
+
+  async function contentsFor(
+    req: NormalizedChatRequest,
+    imageResponse: { bytes?: Uint8Array; contentType?: string } = {}
+  ): Promise<{
+    contents: Array<{ role: string; parts: Array<Record<string, unknown>> }>
+    imageFetches: string[]
+    imageRedirects: Array<string | undefined>
+  }> {
+    let sentBody: string | undefined
+    const imageFetches: string[] = []
+    const imageRedirects: Array<string | undefined> = []
+    const fetcher = fetcherFor(async (url, init) => {
+      if (url.includes('streamGenerateContent')) {
+        sentBody = init?.body as string
+        return { ok: true, status: 200, text: 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}}\n\n' }
+      }
+      if (url.includes('loadCodeAssist')) return { ok: true, status: 200, text: JSON.stringify({ project: { id: 'p' } }) }
+      imageFetches.push(url)
+      imageRedirects.push(init?.redirect)
+      return {
+        ok: true,
+        status: 200,
+        text: '',
+        bytes: imageResponse.bytes ?? PNG_BYTES,
+        contentType: imageResponse.contentType ?? 'image/png'
+      }
+    })
+    const adapter = createAntigravityAdapter('antigravity', {
+      fetcher,
+      logger: { log() {}, warn() {}, error() {} }
+    })
+    await collect(adapter.chat(ctx(), req))
+    const body = JSON.parse(sentBody!) as {
+      request: { contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> }
+    }
+    return { contents: body.request.contents, imageFetches, imageRedirects }
+  }
+
+  it('sends an OpenAI image_url data URL to Gemini as an inlineData part', async () => {
+    const dataUrl = `data:image/png;base64,${Buffer.from(PNG_BYTES).toString('base64')}`
+    const { contents, imageFetches } = await contentsFor({
+      model: 'gemini-2.5-flash',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is this?' },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }],
+      stream: true
+    })
+
+    expect(contents[0].parts).toEqual([
+      { text: 'what is this?' },
+      { inlineData: { mimeType: 'image/png', data: Buffer.from(PNG_BYTES).toString('base64') } }
+    ])
+    // A data URL is already bytes: no network round-trip.
+    expect(imageFetches).toEqual([])
+  })
+
+  it('downloads an http(s) image and inlines it, sniffing the mime type from the bytes', async () => {
+    const { contents, imageFetches, imageRedirects } = await contentsFor(
+      {
+        model: 'gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 'https://images.example.com/cat.png' } }]
+        }],
+        stream: true
+      },
+      // Image CDNs often answer with a generic content type; the magic bytes win.
+      { contentType: 'application/octet-stream' }
+    )
+
+    expect(imageFetches).toEqual(['https://images.example.com/cat.png'])
+    // Redirects are refused so a public URL cannot bounce to a blocked host.
+    expect(imageRedirects).toEqual(['error'])
+    expect(contents[0].parts).toEqual([
+      { inlineData: { mimeType: 'image/png', data: Buffer.from(PNG_BYTES).toString('base64') } }
+    ])
+  })
+
+  it('rejects image URLs that target loopback or private hosts (SSRF guard)', async () => {
+    const req: NormalizedChatRequest = {
+      model: 'gemini-2.5-flash',
+      messages: [{
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'http://127.0.0.1:8080/secret.png' } }]
+      }],
+      stream: true
+    }
+    await expect(contentsFor(req)).rejects.toMatchObject({ type: 'REQUEST_REJECTED' })
+  })
+
+  it('keeps text-only content arrays as text parts instead of stringifying them', async () => {
+    const { contents } = await contentsFor({
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: ' world' }] }],
+      stream: true
+    })
+    expect(contents[0].parts).toEqual([{ text: 'hello' }, { text: ' world' }])
+  })
+
+  it('accepts Anthropic-style base64 image blocks', async () => {
+    const { contents } = await contentsFor({
+      model: 'gemini-2.5-flash',
+      messages: [{
+        role: 'user',
+        content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'aGVsbG8=' } }]
+      }],
+      stream: true
+    })
+    expect(contents[0].parts).toEqual([{ inlineData: { mimeType: 'image/jpeg', data: 'aGVsbG8=' } }])
+  })
+
+  it('forwards an image returned by a tool as a sibling inlineData part of the functionResponse turn', async () => {
+    const dataUrl = `data:image/png;base64,${Buffer.from(PNG_BYTES).toString('base64')}`
+    const { contents } = await contentsFor({
+      model: 'gemini-2.5-flash',
+      messages: [
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_1', function: { name: 'screenshot', arguments: '{}' } }]
+        },
+        {
+          role: 'tool',
+          toolCallId: 'call_1',
+          content: [
+            { type: 'text', text: 'captured' },
+            { type: 'image_url', image_url: { url: dataUrl } }
+          ]
+        }
+      ],
+      stream: true
+    })
+
+    const toolTurn = contents[1]
+    expect(toolTurn.parts[0]).toEqual({
+      functionResponse: { name: 'screenshot', id: 'call_1', response: { result: 'captured' } }
+    })
+    expect(toolTurn.parts[1]).toEqual({
+      inlineData: { mimeType: 'image/png', data: Buffer.from(PNG_BYTES).toString('base64') }
+    })
+  })
+
+  it('rejects an image larger than the inline limit instead of forwarding it', async () => {
+    const oversized = new Uint8Array(10 * 1024 * 1024 + 1)
+    oversized.set(PNG_BYTES)
+    await expect(
+      contentsFor(
+        {
+          model: 'gemini-2.5-flash',
+          messages: [{
+            role: 'user',
+            content: [{ type: 'image_url', image_url: { url: 'https://images.example.com/huge.png' } }]
+          }],
+          stream: true
+        },
+        { bytes: oversized }
+      )
+    ).rejects.toMatchObject({ type: 'CLIENT_ERROR' })
   })
 
   it('translates OpenAI tools and tool_choice into Gemini functionDeclarations so the model can call tools', async () => {

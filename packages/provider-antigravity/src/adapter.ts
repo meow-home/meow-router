@@ -208,11 +208,20 @@ function mapFinishReason(reason: string): string {
   return reason.toLowerCase()
 }
 
+interface AntigravityInlineData {
+  mimeType: string
+  data: string
+}
+
 interface AntigravityPart {
   text?: string
   thoughtSignature?: string
   functionCall?: { name: string; args: Record<string, unknown> }
   functionResponse?: { name: string; response: Record<string, unknown> }
+  // Gemini's inline binary part. The Cloud Code Assist API accepts images as
+  // base64 bytes here; there is no URL form, so remote images are downloaded
+  // and re-encoded before the request is built (see toGeminiParts).
+  inlineData?: AntigravityInlineData
 }
 
 interface AntigravityContent {
@@ -283,19 +292,144 @@ export class ThoughtSignatureCache {
   }
 }
 
+// Upper bound for a single image forwarded to Gemini. Base64 inflates the
+// payload by ~33%, so a 10 MiB image already occupies ~13 MiB of request body;
+// larger images are rejected with a readable client error instead of an
+// upstream 400/413.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+// Resolves an image URL that is not a `data:` URL to inline bytes. Implemented
+// by the adapter (network + SSRF guard) and injected here so the translation
+// itself stays pure and testable without a live provider.
+type ImageResolver = (url: string) => Promise<AntigravityInlineData>
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+// Plain text of a message content value: a string, or the concatenation of its
+// text parts. Image parts contribute nothing — callers that need the images use
+// toGeminiParts instead. Stringifying an array here is what used to turn a
+// vision request into the literal text "[object Object]".
+function contentText(content: unknown): string {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    let out = ''
+    for (const part of content) {
+      if (typeof part === 'string') out += part
+      else if (isRecord(part) && part['type'] === 'text' && typeof part['text'] === 'string') out += part['text']
+    }
+    return out
+  }
+  return String(content)
+}
+
+// `data:<mime>[;base64],<payload>` -> inline bytes. Clients (Meow Coding, the AI
+// SDK, Claude Code, curl examples) send images this way, so the common case
+// needs no network access at all.
+function parseDataUrl(url: string): AntigravityInlineData | undefined {
+  const comma = url.indexOf(',')
+  if (!url.startsWith('data:') || comma === -1) return undefined
+  const header = url.slice('data:'.length, comma)
+  const payload = url.slice(comma + 1)
+  const [rawMime, ...params] = header.split(';')
+  const mimeType = rawMime && rawMime.includes('/') ? rawMime : 'image/png'
+  if (params.some((p) => p.toLowerCase() === 'base64')) return { mimeType, data: payload }
+  try {
+    return { mimeType, data: Buffer.from(decodeURIComponent(payload), 'utf8').toString('base64') }
+  } catch {
+    return { mimeType, data: Buffer.from(payload, 'utf8').toString('base64') }
+  }
+}
+
+// Identifies the image format from its magic bytes. Preferring the bytes over
+// the response `Content-Type` matters: CDNs and image hosts frequently answer
+// with `application/octet-stream`, which Gemini rejects as a mimeType.
+function sniffImageMimeType(bytes: Uint8Array): string | undefined {
+  const startsWith = (sig: number[], offset = 0): boolean =>
+    bytes.length >= offset + sig.length && sig.every((b, i) => bytes[offset + i] === b)
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png'
+  if (startsWith([0xff, 0xd8, 0xff])) return 'image/jpeg'
+  if (startsWith([0x47, 0x49, 0x46, 0x38])) return 'image/gif'
+  if (startsWith([0x52, 0x49, 0x46, 0x46]) && startsWith([0x57, 0x45, 0x42, 0x50], 8)) return 'image/webp'
+  if (startsWith([0x42, 0x4d])) return 'image/bmp'
+  return undefined
+}
+
+function resolveImageMimeType(contentType: string | null, bytes: Uint8Array): string | undefined {
+  const sniffed = sniffImageMimeType(bytes)
+  if (sniffed) return sniffed
+  const header = contentType?.split(';')[0]?.trim().toLowerCase()
+  if (header && header.startsWith('image/')) return header
+  return undefined
+}
+
+// Normalizes the image shapes clients send into a URL or a data URL:
+//   OpenAI Chat Completions  { type: 'image_url', image_url: { url } | url }
+//   OpenAI Responses API     { type: 'input_image', image_url: url }
+//   Anthropic Messages       { type: 'image', source: { type: 'base64' | 'url' } }
+function imageUrlOf(part: Record<string, unknown>): string | undefined {
+  const type = part['type']
+  if (type === 'image_url' || type === 'input_image') {
+    const value = part['image_url']
+    if (typeof value === 'string' && value) return value
+    if (isRecord(value) && typeof value['url'] === 'string' && value['url']) return value['url']
+    return undefined
+  }
+  if (type === 'image') {
+    const source = part['source']
+    if (!isRecord(source)) return undefined
+    if (source['type'] === 'base64' && typeof source['data'] === 'string') {
+      const media = typeof source['media_type'] === 'string' ? source['media_type'] : 'image/png'
+      return `data:${media};base64,${source['data']}`
+    }
+    if (typeof source['url'] === 'string' && source['url']) return source['url']
+  }
+  return undefined
+}
+
+// Translates one message's `content` (string or OpenAI/Anthropic content-part
+// array) into Gemini parts, preserving images as `inlineData`.
+async function toGeminiParts(content: unknown, resolveImage?: ImageResolver): Promise<AntigravityPart[]> {
+  if (content == null) return []
+  if (typeof content === 'string') return content ? [{ text: content }] : []
+  if (!Array.isArray(content)) return [{ text: String(content) }]
+
+  const parts: AntigravityPart[] = []
+  for (const item of content) {
+    if (typeof item === 'string') {
+      if (item) parts.push({ text: item })
+      continue
+    }
+    if (!isRecord(item)) continue
+    if (item['type'] === 'text' || item['type'] === 'input_text') {
+      const text = item['text']
+      if (typeof text === 'string' && text) parts.push({ text })
+      continue
+    }
+    const url = imageUrlOf(item)
+    if (!url) continue
+    const inline = parseDataUrl(url) ?? (resolveImage ? await resolveImage(url) : undefined)
+    if (inline) parts.push({ inlineData: inline })
+  }
+  return parts
+}
+
 // Converts provider-neutral (OpenAI-style) messages into the Gemini/Antigravity
 // `contents` shape. The Cloud Code Assist API only accepts `user` and `model`
 // roles in contents: `system` goes into `systemInstruction`, `assistant` maps to
 // `model`, and `tool` results become a `user` message carrying a
 // `functionResponse`. Sending OpenAI roles verbatim makes the server reject the
 // request with 400 INVALID_ARGUMENT.
-function toAntigravityContents(
+async function toAntigravityContents(
   messages: NormalizedChatRequest['messages'],
-  signatures?: ThoughtSignatureCache
-): {
+  signatures?: ThoughtSignatureCache,
+  resolveImage?: ImageResolver
+): Promise<{
   contents: AntigravityContent[]
   systemInstruction?: { parts: AntigravityPart[] }
-} {
+}> {
   const contents: AntigravityContent[] = []
   const systemParts: AntigravityPart[] = []
   // Maps an OpenAI tool_call_id to the function name the model requested. The
@@ -306,15 +440,20 @@ function toAntigravityContents(
   const toolCallIdToName = new Map<string, string>()
   for (const m of messages) {
     switch (m.role) {
-      case 'system':
-        if (m.content) systemParts.push({ text: String(m.content) })
+      case 'system': {
+        const text = contentText(m.content)
+        if (text) systemParts.push({ text })
         break
-      case 'user':
-        contents.push({ role: 'user', parts: [{ text: String(m.content ?? '') }] })
+      }
+      case 'user': {
+        const parts = await toGeminiParts(m.content, resolveImage)
+        contents.push({ role: 'user', parts: parts.length > 0 ? parts : [{ text: '' }] })
         break
+      }
       case 'assistant': {
         const parts: AntigravityPart[] = []
-        if (m.content) parts.push({ text: String(m.content) })
+        const text = contentText(m.content)
+        if (text) parts.push({ text })
         if (Array.isArray(m.toolCalls)) {
           for (const tc of m.toolCalls) {
             const t = tc as { id?: string; function?: { name?: string; arguments?: unknown } }
@@ -357,15 +496,24 @@ function toAntigravityContents(
         // Use the function name recovered from the assistant tool_calls; fall
         // back to the tool_call_id only if we never saw the call.
         const name = (m.toolCallId && toolCallIdToName.get(m.toolCallId)) || m.toolCallId || 'unknown'
+        // A tool result may carry images (a screenshot-returning tool). Gemini's
+        // functionResponse only holds JSON, so the images travel as sibling
+        // parts of the same user turn.
+        const resultParts = await toGeminiParts(m.content, resolveImage)
+        const resultText = resultParts
+          .filter((p) => typeof p.text === 'string')
+          .map((p) => p.text)
+          .join('\n')
+        const images = resultParts.filter((p) => p.inlineData)
         contents.push({
           role: 'user',
           parts: [{
             functionResponse: {
               name,
               ...(m.toolCallId ? { id: m.toolCallId } : {}),
-              response: { result: String(m.content ?? '') }
+              response: { result: resultText }
             }
-          }]
+          }, ...images]
         })
         break
       }
@@ -441,6 +589,70 @@ export class AntigravityAdapter implements ProviderAdapter {
   private assertEndpointSafe(ctx: ProviderContext): void {
     const r = assertSafeEndpoint(this.resolveBaseUrl(ctx))
     if (!r.ok) throw new ProviderError({ type: 'REQUEST_REJECTED', message: `Unsafe provider endpoint: ${r.reason}`, retryable: false })
+  }
+
+  // Downloads an image referenced by an http(s) URL and returns it as inline
+  // base64, because the Cloud Code Assist API has no URL image form. The URL
+  // comes from the client, so it is SSRF-guarded exactly like a custom provider
+  // endpoint: a chat request must not be able to reach loopback, RFC1918,
+  // link-local or cloud-metadata addresses through the gateway.
+  private async loadRemoteImage(ctx: ProviderContext, url: string): Promise<AntigravityInlineData> {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new ProviderError({ type: 'CLIENT_ERROR', message: 'Image URL is not a valid absolute URL.', status: 400, retryable: false })
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new ProviderError({ type: 'CLIENT_ERROR', message: 'Only http(s) image URLs are supported.', status: 400, retryable: false })
+    }
+    const safe = assertSafeEndpoint(url)
+    if (!safe.ok) {
+      throw new ProviderError({ type: 'REQUEST_REJECTED', message: `Unsafe image URL: ${safe.reason}`, retryable: false })
+    }
+
+    let res
+    try {
+      // No redirects: a public URL must not be able to bounce the download to a
+      // host the SSRF guard above would have rejected.
+      res = await this.fetcher(url, { method: 'GET', signal: ctx.signal, redirect: 'error' })
+    } catch (err) {
+      if (ctx.signal.aborted) throw err
+      throw new ProviderError({ type: 'CLIENT_ERROR', message: `Could not download image from ${parsed.host}.`, status: 400, retryable: false })
+    }
+    if (!res.ok) {
+      throw new ProviderError({
+        type: 'CLIENT_ERROR',
+        message: `Could not download image from ${parsed.host} (HTTP ${res.status}).`,
+        status: 400,
+        retryable: false
+      })
+    }
+    if (typeof res.arrayBuffer !== 'function') {
+      throw new ProviderError({ type: 'INTERNAL_ERROR', message: 'The configured fetcher cannot read binary responses.', retryable: false })
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (bytes.byteLength === 0) {
+      throw new ProviderError({ type: 'CLIENT_ERROR', message: `Image at ${parsed.host} is empty.`, status: 400, retryable: false })
+    }
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      throw new ProviderError({
+        type: 'CLIENT_ERROR',
+        message: `Image at ${parsed.host} exceeds the ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MiB limit.`,
+        status: 400,
+        retryable: false
+      })
+    }
+    const mimeType = resolveImageMimeType(res.headers.get('content-type'), bytes)
+    if (!mimeType) {
+      throw new ProviderError({
+        type: 'CLIENT_ERROR',
+        message: `Image at ${parsed.host} is not a supported image format.`,
+        status: 400,
+        retryable: false
+      })
+    }
+    return { mimeType, data: Buffer.from(bytes).toString('base64') }
   }
 
   private async resolveAuth(ctx: ProviderContext): Promise<ResolvedAuth> {
@@ -578,7 +790,11 @@ export class AntigravityAdapter implements ProviderAdapter {
     const { accessToken, bundle } = await this.resolveAuth(ctx)
     const projectId = await this.resolveProject(ctx, accessToken, bundle)
     const id = 'req_' + randomUUID()
-    const { contents, systemInstruction } = toAntigravityContents(request.messages, this.signatures)
+    const { contents, systemInstruction } = await toAntigravityContents(
+      request.messages,
+      this.signatures,
+      (url) => this.loadRemoteImage(ctx, url)
+    )
     // Diagnostic: log the request contents structure (roles + part keys only,
     // never content) to debug the tool-call round-trip 400. Remove once stable.
     this.log('request contents shape', {

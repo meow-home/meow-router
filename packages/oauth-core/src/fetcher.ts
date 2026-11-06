@@ -4,6 +4,13 @@ export interface FetcherResponse {
   headers: { get(name: string): string | null }
   text(): Promise<string>
   json(): Promise<unknown>
+  /**
+   * Optional binary body reader. Required by adapters that must forward raw
+   * bytes (e.g. an image referenced by URL that has to be inlined as base64 in
+   * the provider request). `text()` cannot be used for that: decoding binary
+   * as UTF-8 corrupts the image.
+   */
+  arrayBuffer?(): Promise<ArrayBuffer>
   /** Optional streaming body reader for SSE/NDJSON responses. */
   body?: ReadableStream<Uint8Array>
 }
@@ -14,6 +21,12 @@ export interface FetcherInit {
   body?: string
   form?: Record<string, string>
   signal?: AbortSignal
+  /**
+   * Redirect policy. Defaults to the runtime's (`follow`). Callers that fetch
+   * attacker-supplied URLs (e.g. image links in a chat request) pass `error`
+   * so a redirect cannot bounce the request to a host the SSRF guard rejected.
+   */
+  redirect?: 'follow' | 'error' | 'manual'
 }
 
 export interface Fetcher {
@@ -39,6 +52,7 @@ export function defaultFetcher(): Fetcher {
       headers: { get: (name) => res.headers.get(name) },
       text: () => res.text(),
       json: () => res.json(),
+      arrayBuffer: () => res.arrayBuffer(),
       body: (res.body as ReadableStream<Uint8Array> | null) ?? undefined
     }
   }

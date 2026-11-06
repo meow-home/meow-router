@@ -26,6 +26,9 @@ export interface AnthropicContentBlock {
   id?: string
   name?: string
   input?: unknown
+  // Image blocks: `{ type: 'image', source: { type: 'base64', media_type, data } }`
+  // or `{ type: 'image', source: { type: 'url', url } }`.
+  source?: unknown
 }
 
 export interface AnthropicMessage {
@@ -121,6 +124,53 @@ function blockText(blocks: AnthropicContentBlock[]): string {
     .join('\n')
 }
 
+// Anthropic image block -> OpenAI-style image part, the provider-neutral shape
+// the adapters already understand. Base64 blocks become a `data:` URL, which
+// every adapter can forward without a network round-trip; URL blocks stay a
+// plain URL and are fetched by adapters that need inline bytes (Gemini).
+function imagePartFromSource(source: unknown): { type: 'image_url'; image_url: { url: string } } | undefined {
+  if (!isObject(source)) return undefined
+  if (source['type'] === 'base64' && typeof source['data'] === 'string') {
+    const media = typeof source['media_type'] === 'string' ? source['media_type'] : 'image/png'
+    return { type: 'image_url', image_url: { url: `data:${media};base64,${source['data']}` } }
+  }
+  if (source['type'] === 'url' && typeof source['url'] === 'string' && source['url']) {
+    return { type: 'image_url', image_url: { url: source['url'] } }
+  }
+  return undefined
+}
+
+// Anthropic content blocks -> normalized message content. Text-only content
+// keeps the historical plain-string shape; images (and a mix of text + images)
+// become an OpenAI-style content-part array so the image bytes reach the
+// provider instead of being dropped by blockText().
+function blocksToContent(blocks: AnthropicContentBlock[]): unknown {
+  const parts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = []
+  let hasImage = false
+  for (const block of blocks) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      if (block.text) parts.push({ type: 'text', text: block.text })
+      continue
+    }
+    if (block.type === 'image') {
+      const part = imagePartFromSource(block.source)
+      if (part) {
+        parts.push(part)
+        hasImage = true
+      }
+    }
+  }
+  if (!hasImage) return blockText(blocks)
+  return parts
+}
+
+// A tool_result's `content` is either a string or an array of blocks; images
+// returned by a tool must survive the same way user images do.
+function toolResultContent(content: unknown): unknown {
+  if (!Array.isArray(content)) return content
+  return blocksToContent(content as AnthropicContentBlock[])
+}
+
 // Anthropic tool_choice -> OpenAI tool_choice.
 function translateToolChoice(tc: unknown): unknown {
   if (typeof tc === 'string') return tc
@@ -165,12 +215,11 @@ export function anthropicToNormalized(body: AnthropicMessagesBody): NormalizedCh
         const toolResults = m.content.filter((b) => b.type === 'tool_result')
         if (toolResults.length > 0) {
           for (const tr of toolResults) {
-            messages.push({ role: 'tool', content: tr.content, toolCallId: tr.tool_use_id })
+            messages.push({ role: 'tool', content: toolResultContent(tr.content), toolCallId: tr.tool_use_id })
           }
           continue
         }
-        const text = blockText(m.content)
-        messages.push({ role: 'user', content: text })
+        messages.push({ role: 'user', content: blocksToContent(m.content) })
         continue
       }
       messages.push({ role: 'user', content: m.content })
