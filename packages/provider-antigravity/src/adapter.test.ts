@@ -731,6 +731,98 @@ describe('AntigravityAdapter', () => {
     expect(finishes[0].finishReason).toBe('stop')
   })
 
+  it('yields the first chunk before the provider closes the stream (no full-response buffering)', async () => {
+    // Regression: `chat` used to collect every parsed chunk into an array and
+    // only yield after the SSE body ended. Clients therefore saw nothing until
+    // the whole generation finished, which looked like a hang whenever the
+    // provider was slow.
+    const enc = new TextEncoder()
+    const first = 'data: {"response":{"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}}\n\n'
+    const second = 'data: {"response":{"candidates":[{"finishReason":"STOP"}]}}\n\n'
+    let openGate: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { openGate = resolve })
+    const fetcher: Fetcher = async (url) => {
+      const u = String(url)
+      if (u.includes('loadCodeAssist')) {
+        return {
+          ok: true, status: 200, headers: { get: () => 'application/json' },
+          text: async () => JSON.stringify({ project: { id: 'p' } }), json: async () => ({}),
+          arrayBuffer: async () => new ArrayBuffer(0), body: null
+        } as never
+      }
+      if (!u.includes('streamGenerateContent')) {
+        return {
+          ok: false, status: 404, headers: { get: () => null },
+          text: async () => '', json: async () => ({}),
+          arrayBuffer: async () => new ArrayBuffer(0), body: null
+        } as never
+      }
+      return {
+        ok: true, status: 200, headers: { get: () => 'text/event-stream' },
+        text: async () => '', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0),
+        body: new ReadableStream<Uint8Array>({
+          start(c) { c.enqueue(enc.encode(first)) },
+          async pull(c) {
+            // Only released once the consumer has received the first chunk.
+            await gate
+            c.enqueue(enc.encode(second))
+            c.close()
+          }
+        })
+      } as never
+    }
+    const adapter = createAntigravityAdapter('antigravity', { fetcher })
+    const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
+    const iter = adapter.chat(ctx(), req)[Symbol.asyncIterator]()
+
+    const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 500))
+    const firstResult = await Promise.race([iter.next(), timeout])
+    openGate()
+    expect(firstResult).not.toBe('timeout')
+    const firstChunk = firstResult as IteratorResult<{ kind: string; delta?: string }>
+    expect(firstChunk.done).toBe(false)
+    expect(firstChunk.value).toMatchObject({ kind: 'content_delta', delta: 'Hello' })
+
+    // Drain the rest so the generator finishes cleanly.
+    for (;;) {
+      const next = await iter.next()
+      if (next.done) break
+    }
+  })
+
+  it('fails with a retryable TIMEOUT when the provider never sends a first chunk', async () => {
+    // The Cloud Code Assist API can accept a request and then stay silent for
+    // minutes (observed on models with no capacity, e.g. gemini-3.8-flash-tiered)
+    // instead of returning 503. The adapter must not wait forever.
+    process.env['MEOW_ANTIGRAVITY_FIRST_CHUNK_TIMEOUT_MS'] = '60'
+    try {
+      const fetcher: Fetcher = async (url) => {
+        const u = String(url)
+        if (u.includes('loadCodeAssist')) {
+          return {
+            ok: true, status: 200, headers: { get: () => 'application/json' },
+            text: async () => JSON.stringify({ project: { id: 'p' } }), json: async () => ({}),
+            arrayBuffer: async () => new ArrayBuffer(0), body: null
+          } as never
+        }
+        return {
+          ok: true, status: 200, headers: { get: () => 'text/event-stream' },
+          text: async () => '', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0),
+          // Never emits: models the deadline to fire.
+          body: new ReadableStream<Uint8Array>({ start() { /* stay silent */ } })
+        } as never
+      }
+      const adapter = createAntigravityAdapter('antigravity', { fetcher })
+      const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }], stream: true }
+      await expect(collect(adapter.chat(ctx(), req))).rejects.toMatchObject({
+        type: 'TIMEOUT',
+        retryable: true
+      })
+    } finally {
+      delete process.env['MEOW_ANTIGRAVITY_FIRST_CHUNK_TIMEOUT_MS']
+    }
+  })
+
   it('emits a tool_call_delta when the model returns a functionCall part instead of text', async () => {
     // Regression: the model can respond with a function call (tool call) rather
     // than text. The adapter used to drop functionCall parts entirely, so the

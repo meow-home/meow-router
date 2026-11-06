@@ -12,8 +12,57 @@ const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse'
 const FETCH_MODELS_PATH = '/v1internal:fetchAvailableModels'
 const QUOTA_SUMMARY_PATH = '/v1internal:retrieveUserQuotaSummary'
 
+// How long the provider may stay silent before we give up on the first chunk.
+// Healthy Antigravity responses start streaming in well under a second, but
+// models that are out of upstream capacity (observed on gemini-3.8-flash-tiered
+// on 2026-11-06) accept the request and then stay silent for 30-110s instead of
+// returning 503. The deadline keeps a stalled request bounded: the gateway gets
+// a retryable TIMEOUT it can fail over on, and the client gets an actionable
+// error instead of an indefinite "pending". Override with
+// MEOW_ANTIGRAVITY_FIRST_CHUNK_TIMEOUT_MS (0 disables the deadline).
+export const DEFAULT_FIRST_CHUNK_TIMEOUT_MS = 45_000
+
+function resolveFirstChunkTimeoutMs(): number {
+  const raw = typeof process !== 'undefined' ? process.env['MEOW_ANTIGRAVITY_FIRST_CHUNK_TIMEOUT_MS'] : undefined
+  if (!raw) return DEFAULT_FIRST_CHUNK_TIMEOUT_MS
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_FIRST_CHUNK_TIMEOUT_MS
+  return parsed
+}
+
+function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => void): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) return promise
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      onTimeout()
+      reject(new ProviderError({
+        type: 'TIMEOUT',
+        message: `Provider sent no data within ${Math.round(timeoutMs / 1000)}s. The model may be temporarily out of capacity.`,
+        retryable: true
+      }))
+    }, timeoutMs)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (err) => { clearTimeout(timer); reject(err) }
+    )
+  })
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path
+}
+
+// Number of `functionDeclarations` in the translated request. Logged instead of
+// the declarations themselves: clients (Meow Coding, Claude Code) send dozens of
+// tools with multi-kilobyte schemas, so dumping them wrote ~100 KB per request
+// into the gateway log.
+function countToolDeclarations(body: { request?: Record<string, unknown> }): number | undefined {
+  const tools = body.request?.['tools']
+  if (!Array.isArray(tools)) return undefined
+  return (tools as Array<{ functionDeclarations?: unknown[] }>).reduce(
+    (n, t) => n + (Array.isArray(t?.functionDeclarations) ? t.functionDeclarations.length : 0),
+    0
+  )
 }
 
 // Returns true for Gemini model ids that support chain-of-thought thinking.
@@ -843,24 +892,7 @@ export class AntigravityAdapter implements ProviderAdapter {
     for (const base of this.baseUrlsToTry(ctx)) {
       let res
       try {
-        // Diagnostic: log translated tool declaration shapes (name + parameter
-        // keys only, never values) to identify which tool's input_schema fails
-        // Anthropic strict draft-2020-12 validation. Remove once stable.
-        if (body.request?.tools) {
-          const decls = (body.request.tools as Array<{ functionDeclarations?: Array<{ name?: string; parameters?: Record<string, unknown> }> }>)
-            .flatMap((t) => t.functionDeclarations ?? [])
-          this.log('translated tool shapes', {
-            model: request.model,
-            count: decls.length,
-            decls: decls.map((d) => ({ name: d.name, paramKeys: Object.keys(d.parameters ?? {}), schema: d.parameters }))
-          })
-          // Dump the full JSON of each tool declaration so we can see exactly
-          // what Anthropic receives. Remove once stable.
-          for (const d of decls) {
-            this.log('tool declaration json', { name: d.name, json: JSON.stringify(d) })
-          }
-        }
-        this.log('stream request', { base, model: request.model, projectId })
+        this.log('stream request', { base, model: request.model, projectId, toolCount: countToolDeclarations(body) })
         res = await this.fetcher(joinUrl(base, STREAM_PATH), {
           method: 'POST',
           headers: await this.headers(ctx, accessToken),
@@ -887,15 +919,32 @@ export class AntigravityAdapter implements ProviderAdapter {
       }
 
       const shouldStream = request.stream !== false
-      const chunks: NormalizedChatChunk[] = []
-      for await (const chunk of this.parseSse(res, ctx.signal)) chunks.push(chunk)
-      this.log('stream complete', { base, chunkCount: chunks.length, finishReason: chunks.find((c) => c.kind === 'finish')?.finishReason })
+      const requestStart = Date.now()
 
       if (!shouldStream) {
+        // Non-streaming callers need the whole answer to build one JSON body,
+        // so buffering here is intentional.
+        const chunks: NormalizedChatChunk[] = []
+        for await (const chunk of this.parseSse(res, ctx.signal)) chunks.push(chunk)
+        this.log('stream complete', { base, chunkCount: chunks.length, finishReason: chunks.find((c) => c.kind === 'finish')?.finishReason })
         yield* this.asNonStreamingChunks(chunks)
         return
       }
-      yield* chunks
+
+      // Streaming callers must see tokens as they arrive: yield every chunk as
+      // soon as it is parsed. Buffering the whole SSE body first made the client
+      // silent for the entire generation (and, when the provider queued the
+      // request, indistinguishable from a hang).
+      let chunkCount = 0
+      let firstChunkMs: number | undefined
+      let finishReason: string | undefined
+      for await (const chunk of this.parseSse(res, ctx.signal)) {
+        if (firstChunkMs === undefined) firstChunkMs = Date.now() - requestStart
+        chunkCount++
+        if (chunk.kind === 'finish') finishReason = chunk.finishReason
+        yield chunk
+      }
+      this.log('stream complete', { base, chunkCount, firstChunkMs, finishReason })
       return
     }
     throw lastErr ?? new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Request to provider failed.', retryable: true })
@@ -928,6 +977,10 @@ export class AntigravityAdapter implements ProviderAdapter {
     return new ProviderError({ type: 'CLIENT_ERROR', status, message: 'Antigravity request rejected.', retryable: false })
   }
 
+  private firstChunkTimeoutMs(): number {
+    return resolveFirstChunkTimeoutMs()
+  }
+
   private async *parseSse(res: Awaited<ReturnType<Fetcher>>, signal?: AbortSignal): AsyncIterable<NormalizedChatChunk> {
     try {
       const reader = (res.body as ReadableStream<Uint8Array> | undefined)?.getReader()
@@ -936,8 +989,19 @@ export class AntigravityAdapter implements ProviderAdapter {
       let buffer = ''
       let done = false
       let blockCount = 0
+      let firstRead = true
       while (!done) {
-        const { value, done: stop } = await reader.read()
+        // The Cloud Code Assist API occasionally accepts a request and then
+        // stays silent for minutes (observed on models with no capacity left,
+        // e.g. gemini-3.8-flash-tiered) instead of returning 503. Without a
+        // first-chunk deadline the caller sees an indefinite "pending" state.
+        // Nothing has been emitted yet at this point, so a retryable TIMEOUT
+        // lets the gateway fall back to another route.
+        const read = reader.read()
+        const { value, done: stop } = firstRead
+          ? await raceWithTimeout(read, this.firstChunkTimeoutMs(), () => { void reader.cancel().catch(() => {}) })
+          : await read
+        firstRead = false
         done = stop
         // Normalize CRLF to LF so blocks split reliably on '\n\n' regardless of
         // whether the provider emits '\r\n\r\n' or '\n\n' as the SSE separator.
@@ -952,7 +1016,9 @@ export class AntigravityAdapter implements ProviderAdapter {
       }
       this.log('sse stream ended', { blockCount, trailingBufferLen: buffer.length })
       if (buffer.trim()) { for (const c of this.parseEventLines(buffer)) yield c }
-    } catch {
+    } catch (err) {
+      // Preserve deliberate failures (first-chunk deadline, caller abort).
+      if (err instanceof ProviderError) throw err
       if (signal?.aborted) throw new ProviderError({ type: 'TIMEOUT', message: 'Request aborted.', retryable: false })
       throw new ProviderError({ type: 'PROVIDER_UNAVAILABLE', message: 'Provider closed the stream unexpectedly.', retryable: true })
     }

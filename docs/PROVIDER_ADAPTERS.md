@@ -129,6 +129,20 @@ key. Antigravity is the first such provider.
   `400 INVALID_ARGUMENT`, surfacing as "Could not resolve Antigravity project".
 - Access tokens are auto-refreshed near expiry by the OAuth token manager before
   a request is sent.
+- **Streaming is passed through, not buffered.** `chat()` yields every parsed
+  SSE chunk as soon as it is decoded. Buffering the whole body (the original
+  behaviour) meant a client saw nothing until the generation had finished, so a
+  slow response was indistinguishable from a hang. Non-streaming callers still
+  get the collected form via `asNonStreamingChunks`.
+- **First-chunk deadline.** The Cloud Code Assist API sometimes accepts a
+  request and then stays silent for 30-110s instead of answering `503` when a
+  model has no upstream capacity left (observed on `gemini-3.8-flash-tiered` on
+  2026-11-06). `parseSse()` therefore applies `DEFAULT_FIRST_CHUNK_TIMEOUT_MS`
+  (45s) to the *first* `reader.read()` only and throws a retryable
+  `TIMEOUT` — nothing has been emitted at that point, so the gateway can still
+  fail over to the next route, and a client gets an actionable error instead of
+  an indefinite "pending". Override with
+  `MEOW_ANTIGRAVITY_FIRST_CHUNK_TIMEOUT_MS`; `0` disables the deadline.
 - **Tool-call thought signatures**: the Cloud Code Assist API requires a
   `functionCall` part to carry its `thoughtSignature` when it is resent in a
   multi-turn history; omitting it yields `400 INVALID_ARGUMENT` ("Function call
